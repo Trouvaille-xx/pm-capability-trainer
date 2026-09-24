@@ -1,0 +1,267 @@
+/**
+ * 产品经理能力训练平台 —— 领域模型
+ *
+ * 四个模块的持久化结构都在这里集中定义，供服务端存储层、
+ * API 路由与前端组件共用。
+ */
+
+export type ID = string;
+
+/* ------------------------------------------------------------------ *
+ * 模块一：记录总结（图书 / 文章 / 笔记思考）
+ * ------------------------------------------------------------------ */
+
+export type CaptureKind = "book" | "article" | "note";
+
+export type CaptureStatus = "inbox" | "doing" | "done";
+
+export interface Capture {
+  id: ID;
+  kind: CaptureKind;
+  title: string;
+  /** 图书/文章作者 */
+  author: string;
+  /** 文章链接、图书出版社等信息 */
+  source: string;
+  status: CaptureStatus;
+  tags: string[];
+  /** 内容总结 */
+  summary: string;
+  /** 关键要点 */
+  keyPoints: string[];
+  /** 笔记思考：我从中想到了什么 */
+  thoughts: string;
+  /** 1-5 星，0 表示未评分 */
+  rating: number;
+  /** 关联的方法论领域，用于和方法论库互链 */
+  domains: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * 模块二：方法论 / 知识点学习
+ * ------------------------------------------------------------------ */
+
+export interface MethodologyCard {
+  id: ID;
+  /** 心理学 / 经济学 / 商业与战略 …… 见 catalog.ts 的 DOMAINS */
+  domain: string;
+  title: string;
+  /** 一句话定义 */
+  oneLiner: string;
+  /** 展开说明：原理、边界、常见误区 */
+  detail: string;
+  /** 在产品工作里怎么用 */
+  howToUse: string;
+  /** 具体例子 */
+  example: string;
+  /** 这张卡适合在哪些训练场景里用 */
+  scenarios: TrainingScenario[];
+  /** 来源：关联的记录总结 */
+  sourceCaptureIds: ID[];
+  builtin: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * 模块三：AI 训练师
+ * ------------------------------------------------------------------ */
+
+export type TrainingScenario =
+  | "product-teardown"
+  | "requirement-research"
+  | "process-design";
+
+/**
+ * 场景的分步流程。
+ *
+ * 有些场景是有固定推进顺序的（比如产品拆解要走 8 步），
+ * 训练时需要知道「现在在第几步」「这一步该交付什么」。
+ * 没有分步流程的场景可以不定义。
+ */
+export interface ScenarioStep {
+  /** 从 1 开始的步号，用于提示词里的 {current_step} */
+  id: number;
+  name: string;
+  /** 这一步完成后用户应该交出什么 */
+  deliverable: string;
+  /** 引导用户去哪里获取信息 */
+  whereToGet: string;
+}
+
+/**
+ * 场景的评分表。
+ *
+ * 不同场景的评分口径不一样：产品拆解是 10 个维度各 5 分（总分 50），
+ * 其它场景用百分制。把评分表放到场景定义里，报告生成时注入提示词，
+ * 这样模型必须按这张表打分，不会自创维度。
+ */
+export interface ScenarioRubricItem {
+  dimension: string;
+  /** 该维度满分 */
+  max: number;
+  /** 评分标准说明 */
+  criteria: string;
+}
+
+export type TrainingMode =
+  /** AI 助教引导：给框架、做示范、带你走完 */
+  | "assistant"
+  /** AI Grill：高强度质询，专挑漏洞 */
+  | "grill"
+  /** 苏格拉底追问：只提问不给答案 */
+  | "socratic"
+  /** 完全独立训练：0 AI 介入，事后批改 */
+  | "solo";
+
+export interface TranscriptEntry {
+  role: "user" | "assistant";
+  content: string;
+  at: string;
+  /** 这一轮里 AI 调用过的工具（联网搜索 / MCP），用于在界面上展示「查了什么」 */
+  tools?: ToolTrace[];
+}
+
+/**
+ * 一次工具调用的记录。
+ * 训练是「过程导向」的，所以 AI 查了什么、查到几条，值得留在对话里。
+ */
+export interface ToolTrace {
+  /** 工具名，如 web_search 或 mcp__github__search_repos */
+  name: string;
+  /** 展示用简述：搜索词、或 MCP 工具的入参摘要 */
+  detail: string;
+  /** 结果摘要：命中条数或前几条标题 */
+  result: string;
+  ok: boolean;
+}
+
+export interface ReportScore {
+  /** 评分维度名，必须来自场景的评分表 */
+  dimension: string;
+  score: number;
+  /** 该维度满分。产品拆解是 5，其它场景是 100 */
+  max: number;
+  comment: string;
+}
+
+export interface TrainingReport {
+  /** 总体评价 */
+  summary: string;
+  /** 总分（各维度之和） */
+  overall: number;
+  /** 总分满分。产品拆解是 50，其它场景是 100 */
+  overallMax: number;
+  /** 等级：优秀 / 良好 / 及格 / 需要重新拆解 */
+  grade: string;
+  scores: ReportScore[];
+  /** 做得好的地方 */
+  strengths: string[];
+  /** 待改进的地方 */
+  improvements: string[];
+  /** 可执行的建议 */
+  suggestions: string[];
+  /** 下一步练什么 */
+  nextSteps: string[];
+  generatedAt: string;
+}
+
+export interface TrainingSession {
+  id: ID;
+  scenario: TrainingScenario;
+  mode: TrainingMode;
+  /** 本次训练的题目 / 拆解对象 */
+  topic: string;
+  status: "active" | "completed";
+  transcript: TranscriptEntry[];
+  /** 完全独立训练模式下的作答 */
+  submission: string;
+  report?: TrainingReport;
+  /* ---- 分步场景（如产品拆解）用到的字段 ---- */
+  /** 产品类型：C端 / B端 / AI功能 / 完整产品 */
+  productType?: string;
+  /** 这次拆解是为了达成什么 */
+  analysisGoal?: string;
+  /** 当前进行到第几步（从 1 开始）。无分步流程的场景为 0 */
+  currentStep?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * 模块四：辅助系统
+ * ------------------------------------------------------------------ */
+
+export type WebSearchProvider =
+  /** 抓 cn.bing.com 的结果页；国内可直连，无需密钥 */
+  | "bing"
+  /** 无需密钥，但国内多数网络不可达 */
+  | "duckduckgo"
+  | "tavily"
+  | "serper"
+  | "brave";
+
+export interface WebSearchSettings {
+  enabled: boolean;
+  provider: WebSearchProvider;
+  apiKey: string;
+  /** 每次搜索取几条结果 */
+  maxResults: number;
+}
+
+/**
+ * MCP 服务器配置。
+ *
+ * 只支持 Streamable HTTP 传输：本地 stdio 服务器需要 spawn 子进程，
+ * 在一个 Next.js 服务里托管生命周期和权限都太脆，所以先不做。
+ */
+export interface MCPServer {
+  id: ID;
+  name: string;
+  /** MCP 端点，例如 https://mcp.example.com/mcp */
+  url: string;
+  /** 作为 Authorization: Bearer 发送，留空则不带 */
+  token: string;
+  enabled: boolean;
+}
+
+export interface AISettings {
+  /** OpenAI 兼容端点，例如 https://api.openai.com/v1 */
+  baseURL: string;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  /**
+   * 训练师自称的公司名。
+   * 提示词里的 {company_name} 会替换成它，例如
+   * 「你是 XX 公司的 AI 产品经理训练师」。
+   */
+  companyName: string;
+  /** 联网搜索：让 AI 能基于训练题目和对话去查外部资料 */
+  webSearch: WebSearchSettings;
+  /** 已配置的 MCP 服务器 */
+  mcpServers: MCPServer[];
+}
+
+/**
+ * 提示词的作用域。
+ * 训练时的系统提示词由「场景块 + 模式块」拼装而成，两者都能单独调整，
+ * 所以用户可以把「AI Grill 的质询强度」和「产品拆解的框架」分开改。
+ */
+export type PromptScope = TrainingScenario | TrainingMode | "report" | "chat";
+
+export interface PromptTemplate {
+  id: ID;
+  name: string;
+  scope: PromptScope;
+  /** 仅当 scope 为训练场景且需要区分模式时使用 */
+  mode?: TrainingMode;
+  system: string;
+  enabled: boolean;
+  builtin: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

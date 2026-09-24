@@ -1,0 +1,25 @@
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# 本地数据（个人记录、训练会话、AI 配置与密钥）
+data/
+
+# 环境变量与密钥
+.env
+.env.local
+.env.*.local
+
+# 误落到项目目录里的工具配置备份
+*.backup_*
+settings.yaml
+settings.yml
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
