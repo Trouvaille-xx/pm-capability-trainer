@@ -17,6 +17,7 @@ import type {
   Capture,
   MethodologyCard,
   PromptTemplate,
+  Question,
   TrainingSession,
 } from "./types";
 import { seedMethodology, seedPrompts } from "./seed";
@@ -29,7 +30,8 @@ export type CollectionName =
   | "captures"
   | "methodology"
   | "sessions"
-  | "prompts";
+  | "prompts"
+  | "questions";
 
 /* ------------------------------------------------------------------ *
  * 基础读写
@@ -238,6 +240,7 @@ interface CollectionMap {
   methodology: MethodologyCard;
   sessions: TrainingSession;
   prompts: PromptTemplate;
+  questions: Question;
 }
 
 type CollectionType<K extends CollectionName> = CollectionMap[K];

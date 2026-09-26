@@ -4,14 +4,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  IconBack,
-  IconEdit,
-  IconList,
-  IconSpark,
-  IconTag,
-  IconTarget,
-} from "@/components/icons";
 import { ConfirmDialog } from "@/components/Modal";
 import { scenarioName } from "@/lib/catalog";
 import { apiGet, apiSend } from "@/lib/client";
@@ -83,15 +75,15 @@ export default function MethodologyDetailPage() {
           <div>
             <h1>知识点</h1>
           </div>
-          <div className="page-actions">
-            <Link href="/methodology" className="btn">
-              <IconBack width={14} height={14} />
-              返回列表
+        </div>
+        <div className="empty-board">
+          <h3>这张便签不在了</h3>
+          <p>{error || "可能已经被删掉，或者链接里的编号不对。"}</p>
+          <div className="hint-actions">
+            <Link href="/methodology" className="go">
+              回到便签墙
             </Link>
           </div>
-        </div>
-        <div className="folder-pane">
-          <div className="empty">{error || "没有找到这个知识点。"}</div>
         </div>
       </div>
     );
@@ -99,87 +91,82 @@ export default function MethodologyDetailPage() {
 
   return (
     <div className="stack">
-      <div className="detail-head">
-        <Link
-          href="/methodology"
-          className="btn btn-sm detail-back"
-          title="返回知识点列表"
-        >
-          <IconBack width={14} height={14} />
-          返回
-        </Link>
-
-        <div className="detail-title-wrap">
-          <h1 className="detail-title">{card.title}</h1>
-          <div className="detail-meta">
-            <span className="detail-meta-item">
-              <IconTag width={13} height={13} />
-              {card.domain}
-            </span>
-            {card.scenarios.length > 0 ? (
-              <span className="detail-meta-item">
-                <IconTarget width={13} height={13} />
-                {card.scenarios.map(scenarioName).join(" / ")}
-              </span>
-            ) : null}
-            {card.builtin ? (
-              <span className="detail-meta-item">内置知识点</span>
-            ) : null}
-          </div>
+      <div className="page-head">
+        <div style={{ minWidth: 0 }}>
+          <h1>{card.title}</h1>
         </div>
-
-        <div className="detail-actions">
-          <Link
-            href={`/methodology?edit=${card.id}`}
-            className="btn btn-sm"
-            title="编辑这个知识点"
-          >
-            <IconEdit width={13} height={13} />
+        <div className="page-actions">
+          <Link href={`/methodology?edit=${card.id}`} className="board-bar-btn">
             编辑
           </Link>
           <button
-            className="btn btn-sm btn-danger"
+            type="button"
+            className="board-bar-btn board-bar-btn-danger"
             onClick={() => setConfirming(true)}
-            title="删除这个知识点"
           >
             删除
           </button>
         </div>
       </div>
 
-      <div className="folder-pane">
-        <div className="detail-body">
-          <div className="notice notice-info">{card.oneLiner}</div>
+      {/* 一条知识点的详情就是「把这张便签拿起来读」。
+          所以用 .reader（单张纸），不用 .wall。 */}
+      <div className="reader on">
+        <div className="reader-card">
+          <span className="note-pin" aria-hidden="true" />
+
+          <div className="reader-domain">
+            <span>{card.domain}</span>
+            <span className="state-mark">{card.builtin ? "内置" : "自建"}</span>
+          </div>
+
+          {card.oneLiner ? (
+            <p className="reader-def">{card.oneLiner}</p>
+          ) : null}
 
           {card.detail ? (
-            <section>
-              <div className="detail-section-head">
-                <IconList width={15} height={15} />
-                <h2>展开说明</h2>
-              </div>
-              <p>{card.detail}</p>
-            </section>
+            <div className="reader-sec">
+              <span className="reader-sec-label">展开说明</span>
+              <div className="reader-sec-body">{card.detail}</div>
+            </div>
           ) : null}
 
           {card.howToUse ? (
-            <section>
-              <div className="detail-section-head">
-                <IconSpark width={15} height={15} />
-                <h2>在产品工作里怎么用</h2>
-              </div>
-              <p>{card.howToUse}</p>
-            </section>
+            <div className="reader-sec">
+              <span className="reader-sec-label">在产品工作里怎么用</span>
+              <div className="reader-sec-body">{card.howToUse}</div>
+            </div>
           ) : null}
 
           {card.example ? (
-            <section>
-              <div className="detail-section-head">
-                <IconList width={15} height={15} />
-                <h2>具体例子</h2>
-              </div>
-              <div className="notice">{card.example}</div>
-            </section>
+            <div className="reader-sec">
+              <span className="reader-sec-label">具体例子</span>
+              <div className="reader-example">{card.example}</div>
+            </div>
           ) : null}
+
+          {card.scenarios.length > 0 ? (
+            <div className="reader-sec">
+              <span className="reader-sec-label">适用训练场景</span>
+              <div className="note-tags">
+                {card.scenarios.map((s) => (
+                  <span key={s}>{scenarioName(s)}</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="reader-actions">
+            <Link href="/methodology" className="board-bar-btn">
+              回到便签墙
+            </Link>
+            <Link
+              href={`/methodology?edit=${card.id}`}
+              className="board-bar-btn"
+            >
+              改写这一条
+            </Link>
+          </div>
         </div>
       </div>
 

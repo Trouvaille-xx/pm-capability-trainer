@@ -416,3 +416,20 @@ export function IconPlug(props: IconProps) {
     </Icon>
   );
 }
+
+/**
+ * 题库：问号 + 卡片轮廓。
+ *
+ * 为什么不用「书本」：方法论已经是三层叠放的卡片，记录总结是文档 + 笔，
+ * 再加一本书会有三个近似的方形轮廓，折叠成 68px 时根本分不出来。
+ * 问号是这五个图标里唯一的曲线符号，缩到 17px 也认得出来。
+ */
+export function IconQuestions(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9.4 9.2a2.7 2.7 0 1 1 3.4 2.6c-.6.2-.9.7-.9 1.3v.6" />
+      <path d="M11.9 16.6h.01" />
+    </Icon>
+  );
+}

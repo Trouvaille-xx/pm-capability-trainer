@@ -507,7 +507,7 @@ const CARDS: SeedCard[] = [
   },
   {
     domain: "用户研究",
-    title: " Jobs to be Done",
+    title: "Jobs to be Done",
     oneLiner: "用户不是买产品，是雇它来完成一件事。",
     detail:
       "JTBD 关注的是「用户在什么情境下要达成什么进展」，而不是用户画像的静态属性。同一个用户在不同情境下有不同的待办任务，这解释了为什么按人群划分常常失效。",

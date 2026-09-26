@@ -4,16 +4,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  IconBack,
-  IconChat,
-  IconDownload,
-  IconReport,
-  IconSlides,
-} from "@/components/icons";
 import { ReportView } from "@/components/ReportView";
-import { apiGet, apiSend } from "@/lib/client";
-import { scenarioName } from "@/lib/catalog";
+import { apiGet, apiSend, formatDate } from "@/lib/client";
+import { modeName, scenarioName, scenarioSteps } from "@/lib/catalog";
 import {
   safeFileName,
   sessionToMarkdown,
@@ -37,8 +30,8 @@ function download(filename: string, text: string) {
 /**
  * 训练报告页。
  *
- * 报告是一次训练的产出物，值得一个独立页面：
- * 能单独分享、能回看、能打印，也不会把会话页挤得很长。
+ * 报告是一次训练的产出物，值得一个独立页面：能单独分享、能回看、
+ * 能导出，也不会把会话页挤得很长。
  */
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
@@ -68,6 +61,7 @@ export default function ReportPage() {
     setGenerating(true);
     setError("");
     try {
+      /* 接口返回的是更新后的整条 TrainingSession，不是单独的 report。 */
       await apiSend(`/api/sessions/${id}/report`, "POST");
       await load();
     } catch (e) {
@@ -77,13 +71,7 @@ export default function ReportPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="stack">
-        <div className="loading">加载中…</div>
-      </div>
-    );
-  }
+  if (loading) return <div className="loading">加载中…</div>;
 
   if (!session) {
     return (
@@ -91,107 +79,97 @@ export default function ReportPage() {
         <div className="page-head">
           <div>
             <h1>训练报告</h1>
+            <p className="lede">{error || "没有找到这次训练。"}</p>
           </div>
           <div className="page-actions">
-            <Link href="/trainer" className="btn">
-              <IconBack width={14} height={14} />
-              返回训练师
+            <Link href="/trainer" className="vs-btn">
+              回到全部训练
             </Link>
           </div>
-        </div>
-        <div className="folder-pane">
-          <div className="empty">{error || "没有找到这次训练。"}</div>
         </div>
       </div>
     );
   }
 
+  const steps = scenarioSteps(session.scenario);
+  const answered = session.transcript.filter((m) => m.role === "user").length;
+  const ready = Boolean(session.report);
+
   return (
     <div className="stack">
-      <div className="detail-head">
-        <Link
-          href={`/trainer/${session.id}`}
-          className="btn btn-sm detail-back"
-          title="返回这次训练的对话"
-        >
-          <IconBack width={14} height={14} />
-          返回对话
-        </Link>
-
-        <div className="detail-title-wrap">
-          <h1 className="detail-title">训练报告</h1>
-          <div className="detail-meta">
-            <span className="detail-meta-item">
-              <IconReport width={13} height={13} />
-              {scenarioName(session.scenario)}
-            </span>
-            <span className="detail-meta-item">
-              <IconChat width={13} height={13} />
-              {session.transcript.filter((m) => m.role === "user").length} 轮作答
-            </span>
-            <span className="detail-meta-item">{session.topic}</span>
-          </div>
+      <div className="page-head">
+        <div style={{ minWidth: 0 }}>
+          <h1>训练报告</h1>
+          <p className="lede">
+            <Link href={`/trainer/${session.id}`}>
+              <span style={{ textDecoration: "underline" }}>{session.topic}</span>
+            </Link>
+            <br />
+            {scenarioName(session.scenario)}，{modeName(session.mode)}，已答 {answered} 轮
+            {steps.length > 0
+              ? `，进行到第 ${Math.min(Math.max(session.currentStep || 1, 1), steps.length)} 步`
+              : ""}
+            。最近改动 {formatDate(session.updatedAt)}。
+          </p>
         </div>
 
-        <div className="detail-actions">
+        <div className="page-actions">
           <button
-            className="btn btn-sm"
+            className="vs-btn"
             onClick={() =>
               download(
                 `${safeFileName(session.topic)}-训练记录.md`,
                 sessionToMarkdown(session),
               )
             }
-            disabled={!session.report}
-            title={
-              session.report
-                ? "导出完整训练记录与评分（Markdown）"
-                : "先生成报告再导出"
-            }
+            disabled={!ready}
+            title={ready ? "导出完整训练记录与评分" : "先生成报告再导出"}
           >
-            <IconDownload width={13} height={13} />
-            导出 MD
+            导出记录
           </button>
           <button
-            className="btn btn-sm"
+            className="vs-btn"
             onClick={() =>
               download(
                 `${safeFileName(session.topic)}-汇报大纲.md`,
                 sessionToPptOutline(session),
               )
             }
-            disabled={!session.report}
-            title={
-              session.report
-                ? "导出逐页 PPT 大纲（Markdown）"
-                : "先生成报告再导出"
-            }
+            disabled={!ready}
+            title={ready ? "导出逐页 PPT 大纲" : "先生成报告再导出"}
           >
-            <IconSlides width={13} height={13} />
             PPT 大纲
           </button>
           <button
-            className="btn btn-sm"
+            className="vs-btn on"
             onClick={regenerate}
             disabled={generating}
-            title="让 AI 重新评估一次"
+            title="让训练师重新评一次"
           >
-            {generating ? "生成中…" : session.report ? "重新生成" : "生成报告"}
+            {generating ? "正在评…" : ready ? "重新生成" : "生成报告"}
           </button>
         </div>
       </div>
 
       {error ? <div className="notice notice-error">{error}</div> : null}
 
-      <div className="folder-pane">
-        {session.report ? (
-          <ReportView report={session.report} topic={session.topic} />
-        ) : (
-          <div className="empty">
-            还没有报告。回到对话继续作答，或点右上「生成报告」让 AI 现在评估。
+      {session.report ? (
+        <ReportView report={session.report} topic={session.topic} />
+      ) : (
+        <div className="empty-board">
+          <h3>还没有报告</h3>
+          <p>
+            报告是训练结束时由训练师按评分表打的分。
+            回到对话继续作答，或者直接点右上「生成报告」让它现在评。
+          </p>
+          <div className="hint-actions">
+            <Link href={`/trainer/${session.id}`}>回到对话</Link>
+            <button className="go" onClick={regenerate} disabled={generating}>
+              {generating ? "正在评…" : "现在生成报告"}
+            </button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

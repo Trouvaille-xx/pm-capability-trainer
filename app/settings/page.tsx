@@ -1,31 +1,97 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+/**
+ * 辅助系统（设置）
+ *
+ * 这一页是「工具」，不是内容。所以不用便签墙那一套，改成印刷品的填表版式：
+ * - 左侧一条极窄的章节索引（像书的目录），当前位置用朱砂
+ * - 右侧下划线式填空，不是描边圆角输入框
+ * - 开关是方的、无色的，靠位置和填充表达开 / 关
+ * - 状态是方括号里的文字（[正常] / [空]），不用彩色圆点
+ *
+ * 安全：GET /api/settings 会连明文 apiKey 一起返回。它只许出现在
+ * type="password" 的输入框里，不进日志、不进注释、不进任何提示文案。
+ * 页面上的「已配置 / 未配置」只报告有没有值。
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PROMPT_SCOPES, scopeName } from "@/lib/catalog";
 import { apiGet, apiSend } from "@/lib/client";
-import {
-  IconCheck,
-  IconChevronDown,
-  IconGlobe,
-  IconGrid,
-  IconPlug,
-  IconPlus,
-  IconSettings,
-  IconSpark,
-  IconTrash,
-  IconUser,
-} from "@/components/icons";
 import { ConfirmDialog } from "@/components/Modal";
 import { PROVIDER_LABELS } from "@/lib/websearch";
 import type {
   AISettings,
   MCPServer,
+  PromptScope,
   PromptTemplate,
   WebSearchProvider,
 } from "@/lib/types";
 
-/** 提示词模板里可用的变量，与 src/lib/prompts.ts 的 buildVars 保持一致。 */
+/* ------------------------------------------------------------------ *
+ * 表单校验：和 app/api/settings/route.ts 的规则保持一致。
+ * 在本地先挡一道，用户不用等一次失败的请求才知道哪里错了。
+ * ------------------------------------------------------------------ */
+
+const KEY_MIN = 64;
+const KEY_MAX = 200000;
+
+function baseUrlIssue(value: string): string {
+  return /^https?:\/\//i.test(value.trim())
+    ? ""
+    : "接口地址需要以 http:// 或 https:// 开头";
+}
+
+function mcpUrlIssue(value: string): string {
+  return /^https?:\/\//i.test(value.trim())
+    ? ""
+    : "MCP 地址需要以 http:// 或 https:// 开头";
+}
+
+/** 表单里所有控件都存字符串：数字用字符串才能中途为空。 */
+interface AIForm {
+  baseURL: string;
+  apiKey: string;
+  model: string;
+  temperature: string;
+  maxTokens: string;
+  companyName: string;
+}
+
+function toForm(settings: AISettings): AIForm {
+  return {
+    baseURL: settings.baseURL,
+    apiKey: settings.apiKey,
+    model: settings.model,
+    temperature: String(settings.temperature),
+    maxTokens: String(settings.maxTokens),
+    companyName: settings.companyName,
+  };
+}
+
+function formIssues(form: AIForm): string[] {
+  const issues: string[] = [];
+  if (baseUrlIssue(form.baseURL)) issues.push(baseUrlIssue(form.baseURL));
+  if (form.model.trim() === "") issues.push("模型名不能为空");
+
+  const temperature = Number(form.temperature);
+  if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+    issues.push("温度需要在 0 到 2 之间");
+  }
+
+  const maxTokens = Number(form.maxTokens);
+  if (
+    !Number.isFinite(maxTokens) ||
+    maxTokens < KEY_MIN ||
+    maxTokens > KEY_MAX
+  ) {
+    issues.push(`最大输出长度需要在 ${KEY_MIN} 到 ${KEY_MAX} 之间`);
+  }
+
+  return issues;
+}
+
+/** 提示词里能用的变量，与 src/lib/prompts.ts 的 buildVars 保持一致。 */
 const PROMPT_VARIABLES: { name: string; desc: string }[] = [
   { name: "company_name", desc: "设置里填的公司名，留空时为「本公司」" },
   { name: "product_name", desc: "本次训练的题目" },
@@ -62,55 +128,56 @@ const PRESETS: { name: string; baseURL: string; model: string; note: string }[] 
   },
 ];
 
-type SectionId = "ai" | "tools" | "prompts";
+/** 概要统计只用于「数据与备份」一章，不占用主要接口。 */
+interface DataStats {
+  methodology: number;
+  sessions: number;
+  captures: number;
+}
 
-const SECTIONS: {
-  id: SectionId;
-  name: string;
-  hint: string;
-  Icon: typeof IconSettings;
-}[] = [
-  {
-    id: "ai",
-    name: "AI 配置",
-    hint: "端点、密钥、生成参数",
-    Icon: IconSettings,
-  },
-  {
-    id: "tools",
-    name: "联网与 MCP",
-    hint: "外部检索能力",
-    Icon: IconGlobe,
-  },
-  {
-    id: "prompts",
-    name: "提示词管理",
-    hint: "场景块 / 模式块 / 通用约束",
-    Icon: IconSpark,
-  },
+const SECTIONS: { id: string; name: string }[] = [
+  { id: "ai", name: "AI 配置" },
+  { id: "prompt", name: "提示词管理" },
+  { id: "search", name: "联网搜索" },
+  { id: "mcp", name: "MCP 服务" },
+  { id: "data", name: "数据与备份" },
 ];
 
 export default function SettingsPage() {
-  const [section, setSection] = useState<SectionId>("ai");
+  /* ---------------- 设置 ---------------- */
 
   const [settings, setSettings] = useState<AISettings | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<AIForm | null>(null);
+  const [publishing, setPublishing] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [revealKey, setRevealKey] = useState(false);
-  const [aiMessage, setAiMessage] = useState<{ tone: string; text: string } | null>(
-    null,
-  );
+  const [feedback, setFeedback] = useState("");
+  const [failed, setFailed] = useState(false);
   const [error, setError] = useState("");
+  const [dirty, setDirty] = useState(false);
+
+  /* ---------------- 提示词 ---------------- */
 
   const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
-  const [activePromptId, setActivePromptId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ name: string; system: string }>({
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ id: string; name: string; system: string }>({
+    id: "",
     name: "",
     system: "",
   });
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [promptMessage, setPromptMessage] = useState("");
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [newScope, setNewScope] = useState<PromptScope>("chat");
+
+  /* ---------------- 主题目之外的辅助状态 ---------------- */
+
+  const [active, setActive] = useState<string>("ai");
+  const [presetName, setPresetName] = useState("");
+  const [probe, setProbe] = useState<string>("");
+  const [stats, setStats] = useState<DataStats | null>(null);
+  const [statsError, setStatsError] = useState("");
+
+  const shipped = useRef<{ temperature: number; maxTokens: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -119,10 +186,15 @@ export default function SettingsPage() {
         apiGet<PromptTemplate[]>("/api/prompts"),
       ]);
       setSettings(ai);
+      setForm(toForm(ai));
+      shipped.current = {
+        temperature: ai.temperature,
+        maxTokens: ai.maxTokens,
+      };
       setPrompts(list);
       setError("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "加载失败");
+      setError(e instanceof Error ? e.message : "设置加载失败");
     }
   }, []);
 
@@ -130,144 +202,269 @@ export default function SettingsPage() {
     void load();
   }, [load]);
 
+  /* 章节索引：当前项跟滚动走，点一下滚过去。 */
   useEffect(() => {
-    const found = prompts.find((p) => p.id === activePromptId);
-    if (found) setDraft({ name: found.name, system: found.system });
-  }, [activePromptId, prompts]);
+    const nodes = SECTIONS.map((s) => document.getElementById(s.id)).filter(
+      (el): el is HTMLElement => el !== null,
+    );
+    if (nodes.length === 0) return;
 
-  const activePrompt = prompts.find((p) => p.id === activePromptId) ?? null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) setActive(entry.target.id);
+        }
+      },
+      { rootMargin: "-80px 0px -70% 0px" },
+    );
+    for (const node of nodes) observer.observe(node);
+    return () => observer.disconnect();
+  }, [settings !== null]);
 
-  /**
-   * 按「块」分组：场景块 / 模式块 / 其它。
-   *
-   * 注意不能按 scope 分组——每个模板各自就是一个 scope，
-   * 按 scope 分会得到 9 组、每组 1 条，等于给每行都加一个标题。
-   * 真正有意义的分组是它们所属的「块」（拼装时的三个组成部分）。
-   */
+  /** 「数据与备份」的条目数。数不出来就先不显示数字，不阻塞这一页。 */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      async function count(url: string): Promise<number | null> {
+        try {
+          const value = await apiGet<unknown>(url);
+          return Array.isArray(value) ? value.length : null;
+        } catch {
+          return null;
+        }
+      }
+
+      const [methodology, sessions, captures] = await Promise.all([
+        count("/api/methodology"),
+        count("/api/sessions"),
+        count("/api/captures"),
+      ]);
+      if (cancelled) return;
+      if (methodology === null || sessions === null || captures === null) {
+        setStatsError("有文件读不出来");
+        return;
+      }
+      setStats({ methodology, sessions, captures });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* ---------------- 派生 ---------------- */
+
+  const issues = form ? formIssues(form) : [];
+  const ready = issues.length === 0;
+
   const promptGroups = useMemo(() => {
     const order = ["场景块", "模式块", "其它"];
-    const names = Array.from(
-      new Set(PROMPT_SCOPES.map((s) => s.group)),
-    ).sort((a, b) => order.indexOf(a) - order.indexOf(b));
-
-    return names
+    const groups = Array.from(new Set(PROMPT_SCOPES.map((s) => s.group))).sort(
+      (a, b) => order.indexOf(a) - order.indexOf(b),
+    );
+    return groups
       .map((group) => ({
         group,
-        items: prompts.filter((p) => {
-          const scope = PROMPT_SCOPES.find((s) => s.id === p.scope);
-          return scope?.group === group;
-        }),
+        items: prompts.filter(
+          (p) =>
+            PROMPT_SCOPES.find((s) => s.id === p.scope)?.group === group,
+        ),
       }))
       .filter((g) => g.items.length > 0);
   }, [prompts]);
 
-  /* ---- MCP 服务器的增删改（都只改本地状态，点保存才落盘）---- */
+  const openPrompt = prompts.find((p) => p.id === openId) ?? null;
+  const webSearch = settings?.webSearch ?? null;
+  const webSearchNeedsKey = webSearch
+    ? PROVIDER_LABELS[webSearch.provider].needsKey
+    : false;
+  const disabledPrompts = prompts.filter((p) => !p.enabled).length;
+  const enabledServers = settings?.mcpServers.filter((s) => s.enabled).length ?? 0;
 
-  function addServer() {
-    setSettings((prev) =>
-      prev
-        ? {
-            ...prev,
-            mcpServers: [
-              ...prev.mcpServers,
-              {
-                id: `mcp_${Math.random().toString(36).slice(2, 9)}`,
-                name: "",
-                url: "",
-                token: "",
-                enabled: true,
-              },
-            ],
-          }
-        : prev,
-    );
+  /* ---------------- 操作 ---------------- */
+
+  function patchForm(patch: Partial<AIForm>) {
+    setForm((prev) => (prev ? { ...prev, ...patch } : prev));
+    setDirty(true);
+    setFeedback("");
+    setFailed(false);
   }
 
-  function updateServer(id: string, patch: Partial<MCPServer>) {
-    setSettings((prev) =>
-      prev
-        ? {
-            ...prev,
-            mcpServers: prev.mcpServers.map((s) =>
-              s.id === id ? { ...s, ...patch } : s,
-            ),
-          }
-        : prev,
-    );
+  /** 改一个不落盘的字段（联网搜索 / MCP），等按保存才写。 */
+  function patchSettings(patch: Partial<AISettings>) {
+    setSettings((prev) => (prev ? { ...prev, ...patch } : prev));
+    setDirty(true);
+    setFeedback("");
+    setFailed(false);
   }
 
-  function removeServer(id: string) {
-    setSettings((prev) =>
-      prev
-        ? { ...prev, mcpServers: prev.mcpServers.filter((s) => s.id !== id) }
-        : prev,
-    );
-  }
-
+  /**
+   * 保存。
+   *
+   * 注意服务端 writeSettings 只在顶层做深合并：webSearch 是个整体，
+   * 只发半个子对象的话，缺的字段会被默认值顶掉（apiKey 会直接清空）。
+   * 所以这里一次 PUT 发完整内容，包括 webSearch 的四个字段和完整 mcpServers。
+   * apiKey 从表单原样带回 —— 必须带，否则会把已存的密钥抹掉。
+   */
   async function saveSettings() {
-    if (!settings) return;
-    setSaving(true);
-    setAiMessage(null);
+    if (!settings || !form) return;
+    if (!ready) {
+      setFeedback(issues[0]);
+      setFailed(true);
+      return;
+    }
+
+    setPublishing(true);
+    setFeedback("");
+    setFailed(false);
     try {
-      const next = await apiSend<AISettings>("/api/settings", "PUT", settings);
-      setSettings({ ...next, apiKey: settings.apiKey });
-      setAiMessage({ tone: "notice-good", text: "已保存。" });
-    } catch (e) {
-      setAiMessage({
-        tone: "notice-error",
-        text: e instanceof Error ? e.message : "保存失败",
+      const next = await apiSend<AISettings>("/api/settings", "PUT", {
+        baseURL: form.baseURL.trim(),
+        apiKey: form.apiKey,
+        model: form.model.trim(),
+        temperature: Number(form.temperature),
+        maxTokens: Math.round(Number(form.maxTokens)),
+        companyName: form.companyName,
+        webSearch: {
+          enabled: settings.webSearch.enabled,
+          provider: settings.webSearch.provider,
+          apiKey: settings.webSearch.apiKey,
+          maxResults: settings.webSearch.maxResults,
+        },
+        mcpServers: settings.mcpServers,
       });
+
+      // 服务端会把 baseURL 末尾的斜杠去掉、公司名截到 60 字，
+      // 回填真实值，免得界面上显示的和存的不一样。
+      setSettings(next);
+      setForm(toForm(next));
+      shipped.current = {
+        temperature: next.temperature,
+        maxTokens: next.maxTokens,
+      };
+      setDirty(false);
+      setFeedback("已保存。");
+      setFailed(false);
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : "保存失败");
+      setFailed(true);
     } finally {
-      setSaving(false);
+      setPublishing(false);
     }
   }
 
-  async function test() {
+  /** 草稿（还没保存的改动）直接丢掉，回到磁盘上的那份。 */
+  function discardChanges() {
+    if (!settings) return;
+    setForm(toForm(settings));
+    setDirty(false);
+    setFeedback("");
+    setFailed(false);
+  }
+
+  async function testConnection() {
     setTesting(true);
-    setAiMessage(null);
+    setFeedback("");
+    setFailed(false);
     try {
-      await apiSend("/api/settings/test", "POST");
-      setAiMessage({ tone: "notice-good", text: "连接正常，模型可调用。" });
+      const result = await apiSend<{ ok: boolean; reply: string }>(
+        "/api/settings/test",
+        "POST",
+      );
+      setProbe(`上次测试：可用，回应「${result.reply}」`);
     } catch (e) {
-      setAiMessage({
-        tone: "notice-error",
-        text: e instanceof Error ? e.message : "连接失败",
-      });
+      setProbe("上次测试：失败");
+      setFailed(true);
+      setFeedback(e instanceof Error ? e.message : "连接测试失败");
     } finally {
       setTesting(false);
     }
   }
 
-  async function createPrompt() {
-    try {
-      const created = await apiSend<PromptTemplate>("/api/prompts", "POST", {
-        scope: "chat",
-        name: "新模板",
-        system: "在这里写系统提示词。",
-      });
-      await load();
-      setActivePromptId(created.id);
-      setSection("prompts");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "新建失败");
-    }
+  /* ---- 联网搜索 ---- */
+
+  function patchWebSearch(patch: Partial<AISettings["webSearch"]>) {
+    if (!settings) return;
+    patchSettings({ webSearch: { ...settings.webSearch, ...patch } });
+  }
+
+  /* ---- MCP ---- */
+
+  function addServer() {
+    if (!settings) return;
+    const server: MCPServer = {
+      id: `mcp_${Math.random().toString(36).slice(2, 9)}`,
+      name: "",
+      url: "",
+      token: "",
+      enabled: true,
+    };
+    patchSettings({ mcpServers: [...settings.mcpServers, server] });
+  }
+
+  function updateServer(id: string, patch: Partial<MCPServer>) {
+    if (!settings) return;
+    patchSettings({
+      mcpServers: settings.mcpServers.map((s) =>
+        s.id === id ? { ...s, ...patch } : s,
+      ),
+    });
+  }
+
+  function removeServer(id: string) {
+    if (!settings) return;
+    patchSettings({
+      mcpServers: settings.mcpServers.filter((s) => s.id !== id),
+    });
+  }
+
+  /* ---- 提示词 ---- */
+
+  function openEditor(template: PromptTemplate) {
+    setOpenId(template.id);
+    setDraft({
+      id: template.id,
+      name: template.name,
+      system: template.system,
+    });
+    setPromptMessage("");
+  }
+
+  function closeEditor() {
+    setOpenId(null);
+    setPromptMessage("");
   }
 
   async function savePrompt() {
-    if (!activePrompt) return;
+    const template = openPrompt;
+    if (!template) return;
+    // 防止列表在这期间刷新过，导致把 A 的草稿写到 B 上
+    if (draft.id !== template.id) return;
+
+    if (draft.name.trim() === "") {
+      setPromptMessage("模板名称不能为空");
+      return;
+    }
+    if (draft.system.trim() === "") {
+      setPromptMessage("提示词内容不能为空");
+      return;
+    }
+
     setSavingPrompt(true);
     setPromptMessage("");
     try {
-      await apiSend(`/api/prompts/${activePrompt.id}`, "PATCH", {
-        name: draft.name,
-        system: draft.system,
-      });
+      const updated = await apiSend<PromptTemplate>(
+        `/api/prompts/${template.id}`,
+        "PATCH",
+        {
+          name: draft.name.trim(),
+          system: draft.system,
+          // 注意：PATCH 的规则是 body.enabled === true。
+          // 这里必须显式带上当前值，否则这一条会被静默停用。
+          enabled: template.enabled,
+        },
+      );
       setPrompts((prev) =>
-        prev.map((p) =>
-          p.id === activePrompt.id
-            ? { ...p, name: draft.name, system: draft.system }
-            : p,
-        ),
+        prev.map((p) => (p.id === updated.id ? updated : p)),
       );
       setPromptMessage("已保存。下一次训练立即生效。");
     } catch (e) {
@@ -277,685 +474,780 @@ export default function SettingsPage() {
     }
   }
 
-  async function togglePrompt(template: PromptTemplate) {
+  /**
+   * 启用 / 停用一条模板。
+   * 两个接口对 enabled 的读法不一样（POST 是 !== false，PATCH 是 === true），
+   * 所以这里永远发一个真正的布尔值，不做省略。
+   */
+  async function setPromptEnabled(template: PromptTemplate, enabled: boolean) {
+    setPromptMessage("");
     try {
-      const next = await apiSend<PromptTemplate>(
+      const updated = await apiSend<PromptTemplate>(
         `/api/prompts/${template.id}`,
         "PATCH",
-        { enabled: !template.enabled },
+        { enabled },
       );
-      setPrompts((prev) => prev.map((p) => (p.id === next.id ? next : p)));
+      setPrompts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "操作失败");
+      setPromptMessage(e instanceof Error ? e.message : "操作失败");
     }
   }
 
-  async function resetPrompt() {
-    if (!activePrompt) return;
+  async function createPrompt() {
+    const scope = newScope;
+    setPromptMessage("");
     try {
-      await apiSend(`/api/prompts/${activePrompt.id}`, "DELETE");
-      setActivePromptId(null);
-      setConfirmingDelete(false);
-      await load();
+      const created = await apiSend<PromptTemplate>("/api/prompts", "POST", {
+        scope,
+        name: `${scopeName(scope)}的自定义块`,
+        system: "在这里写系统提示词。",
+        enabled: true,
+      });
+      setPrompts((prev) => [...prev, created]);
+      setActive("prompt");
+      openEditor(created);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "删除失败");
+      setPromptMessage(e instanceof Error ? e.message : "新建失败");
     }
   }
 
-  return (
-    <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>设置</h1>
+  async function deletePrompt() {
+    const template = openPrompt;
+    if (!template) return;
+    try {
+      await apiSend(`/api/prompts/${template.id}`, "DELETE");
+      setPrompts((prev) => prev.filter((p) => p.id !== template.id));
+      setPendingDelete(false);
+      closeEditor();
+    } catch (e) {
+      setPendingDelete(false);
+      setPromptMessage(e instanceof Error ? e.message : "删除失败");
+    }
+  }
+
+  /* ---------------- 渲染 ---------------- */
+
+  if (error && !settings) {
+    return (
+      <div className="stack" style={{ maxWidth: 1120 }}>
+        <header className="page-head">
+          <h1>辅助系统</h1>
+        </header>
+        <div className="notice notice-error">{error}</div>
+        <div className="set-actions">
+          <button type="button" onClick={() => void load()}>
+            重新读取
+          </button>
         </div>
       </div>
+    );
+  }
 
-      {error ? <div className="notice notice-error">{error}</div> : null}
+  if (!settings || !form) {
+    return (
+      <div className="stack" style={{ maxWidth: 1120 }}>
+        <header className="page-head">
+          <h1>辅助系统</h1>
+        </header>
+        <div className="loading">读取设置中…</div>
+      </div>
+    );
+  }
 
-      <div className="settings-shell">
-        {/* 左：分组导航。设置项多了以后，一页平铺会找不到东西 */}
-        <nav className="settings-nav">
-          {SECTIONS.map(({ id, name, hint, Icon }) => (
-            <button
-              key={id}
-              className={`settings-nav-item${section === id ? " active" : ""}`}
-              onClick={() => setSection(id)}
+  const temperatureShipped = shipped.current?.temperature;
+  const maxTokensShipped = shipped.current?.maxTokens;
+
+  return (
+    <div className="setwrap">
+      {/* 章节索引：像书的目录，纯文字。朱砂只出现在当前这一行。 */}
+      <nav className="toc" aria-label="章节">
+        <span className="toc-label">章节</span>
+        {SECTIONS.map((section) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className={active === section.id ? "on" : undefined}
+            aria-current={active === section.id ? "true" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              setActive(section.id);
+              document
+                .getElementById(section.id)
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          >
+            {section.name}
+          </a>
+        ))}
+      </nav>
+
+      <div>
+        {/* ============================ AI 配置 ============================ */}
+        <section className="section" id="ai">
+          <div className="section-head">
+            <h2 className="section-title">AI 配置</h2>
+            <span className={`set-status${ready ? "" : " bad"}`}>
+              {ready ? "当前填写可用" : issues[0]}
+            </span>
+          </div>
+
+          <div className="set-field">
+            <label className="set-field-label" htmlFor="set-mode">
+              填写方式
+            </label>
+            <select
+              id="set-mode"
+              className="set-select"
+              value={presetName}
+              onChange={(event) => {
+                const preset = PRESETS.find((p) => p.name === event.target.value);
+                setPresetName(event.target.value);
+                if (preset) {
+                  patchForm({ baseURL: preset.baseURL, model: preset.model });
+                }
+              }}
             >
-              <span className="settings-nav-icon">
-                <Icon width={16} height={16} />
+              <option value="">自己填，或选一个常见的端点</option>
+              {PRESETS.map((preset) => (
+                <option key={preset.name} value={preset.name}>
+                  {preset.name} —— {preset.note}
+                </option>
+              ))}
+            </select>
+            <div className="set-hint">
+              选一项会把接口地址和模型名一起换掉，密钥不变；之后再手改这两项，就等于自定义。
+            </div>
+          </div>
+
+          <div className="set-field">
+            <label className="set-field-label" htmlFor="set-base">
+              接口地址 <span className="req">*</span>
+            </label>
+            <input
+              id="set-base"
+              className="set-input set-input-key"
+              value={form.baseURL}
+              spellCheck={false}
+              onChange={(event) => patchForm({ baseURL: event.target.value })}
+              placeholder="https://api.openai.com/v1"
+            />
+            <div className="set-hint">
+              兼容 OpenAI 格式的接口地址。末尾不要带 /chat/completions，平台会自己接上去。
+            </div>
+          </div>
+
+          <div className="set-field">
+            <label className="set-field-label" htmlFor="set-model">
+              模型 <span className="req">*</span>
+            </label>
+            <input
+              id="set-model"
+              className="set-input set-input-key"
+              value={form.model}
+              spellCheck={false}
+              onChange={(event) => patchForm({ model: event.target.value })}
+              placeholder="deepseek-v4.1-flash"
+            />
+            <div className="set-hint">填接口实际支持的模型标识。</div>
+          </div>
+
+          <div className="set-field">
+            <span className="set-field-label">
+              API Key{" "}
+              <span className="set-status">
+                {form.apiKey ? "已配置" : "未配置"}
               </span>
-              <span className="settings-nav-text">
-                {name}
-                <span className="settings-nav-hint">{hint}</span>
-              </span>
+            </span>
+            <input
+              id="set-key"
+              aria-label="API Key"
+              className="set-input set-input-key"
+              type="password"
+              autoComplete="new-password"
+              value={form.apiKey}
+              onChange={(event) => patchForm({ apiKey: event.target.value })}
+              placeholder="sk-…"
+            />
+            <div className="set-hint">
+              只保存在本机 data/settings.json，不会上传到任何地方，页面上也不再回显。
+            </div>
+          </div>
+
+          <div className="set-field">
+            <label className="set-field-label" htmlFor="set-temp">
+              温度
+            </label>
+            <input
+              id="set-temp"
+              className="set-input set-input-num"
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={form.temperature}
+              onChange={(event) => patchForm({ temperature: event.target.value })}
+            />
+            <div className="set-hint">
+              训练对话建议 0.6；报告评分由系统固定在 0.3。
+              {temperatureShipped !== undefined
+                ? ` 已保存的值是 ${temperatureShipped}。`
+                : ""}
+            </div>
+          </div>
+
+          <div className="set-field">
+            <label className="set-field-label" htmlFor="set-max">
+              最大输出长度
+            </label>
+            <input
+              id="set-max"
+              className="set-input set-input-num"
+              type="number"
+              min={KEY_MIN}
+              max={KEY_MAX}
+              step={1}
+              value={form.maxTokens}
+              onChange={(event) => patchForm({ maxTokens: event.target.value })}
+            />
+            <div className="set-hint">
+              单次回复的上限，可填 64 到 200000。
+              {maxTokensShipped !== undefined
+                ? ` 已保存的值是 ${maxTokensShipped}。`
+                : ""}
+            </div>
+          </div>
+
+          <div className="set-field">
+            <label className="set-field-label" htmlFor="set-company">
+              公司名称（提示词里的 {"{company_name}"}）
+            </label>
+            <input
+              id="set-company"
+              className="set-input"
+              value={form.companyName}
+              onChange={(event) => patchForm({ companyName: event.target.value })}
+              placeholder="留空时为「本公司」"
+            />
+            <div className="set-hint">
+              会替换掉提示词里的 {"{company_name}"}，例如「你是 XX 的 AI 产品经理训练师」。
+            </div>
+          </div>
+
+          <div className="set-actions">
+            <button
+              type="button"
+              className="go"
+              onClick={() => void saveSettings()}
+              disabled={publishing || !ready}
+            >
+              {publishing ? "保存中…" : "保存"}
             </button>
-          ))}
-        </nav>
+            <button type="button" onClick={() => void testConnection()} disabled={testing}>
+              {testing ? "测试中…" : "测试连接"}
+            </button>
+            {dirty ? (
+              <button type="button" onClick={discardChanges}>
+                撤回到已保存的
+              </button>
+            ) : null}
+            <span className={`set-status${failed || issues.length > 0 ? " bad" : ""}`}>
+              {feedback || probe || (dirty ? "改动还没有落盘" : "与已保存的一致")}
+            </span>
+          </div>
+        </section>
 
-        {/* 右：内容面板 */}
-        <div className="settings-panel">
-          {section === "ai" ? (
-            <>
-              <div className="settings-group">
-                <div className="settings-group-head">
-                  <IconSettings width={15} height={15} />
-                  <h2>接入方式</h2>
-                </div>
-                <div className="settings-group-sub">
-                  任何 OpenAI 兼容端点都可以。密钥只保存在本机{" "}
-                  <code className="mono">data/settings.json</code>，该目录已在
-                  .gitignore 中。
-                </div>
+        {/* ============================ 提示词管理 ============================ */}
+        <section className="section" id="prompt">
+          <div className="section-head">
+            <h2 className="section-title">提示词管理</h2>
+            <span className="set-status">
+              {prompts.length} 条，{disabledPrompts} 条已停用
+            </span>
+          </div>
 
-                <div className="row" style={{ gap: 6 }}>
-                  {PRESETS.map((preset) => (
-                    <button
-                      key={preset.name}
-                      className="tag"
-                      style={{ cursor: "pointer" }}
-                      title={preset.note}
-                      onClick={() =>
-                        setSettings((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                baseURL: preset.baseURL,
-                                model: preset.model,
-                              }
-                            : prev,
-                        )
-                      }
-                    >
-                      {preset.name}
-                    </button>
-                  ))}
-                </div>
+          {promptMessage && !openPrompt ? (
+            <div className="set-hint" style={{ marginTop: 0, marginBottom: 4 }}>
+              {promptMessage}
+            </div>
+          ) : null}
+
+          {promptGroups.map(({ group, items }) => (
+            <div key={group}>
+              <div className="set-hint" style={{ margin: "22px 0 0" }}>
+                {group}（{items.length}）
               </div>
 
-              {settings ? (
-                <>
-                  <div className="settings-group">
-                    <div className="settings-group-head">
-                      <IconGrid width={15} height={15} />
-                      <h2>端点与密钥</h2>
-                    </div>
+              {items.map((template) => {
+                const open = openId === template.id;
+                return (
+                  /* 就地展开：列表和编辑区是同一个组件，选完不用往下滚。
+                     收起时是一行「标题 —— 元信息」，展开后原地下沉成表单。 */
+                  <div key={template.id} className="set-tpl-wrap">
+                    <button
+                      type="button"
+                      className="set-tpl"
+                      aria-expanded={open}
+                      onClick={() => (open ? closeEditor() : openEditor(template))}
+                    >
+                      <span className="set-tpl-main">
+                        <span className="set-tpl-title">{template.name}</span>
+                        <span className="set-tpl-meta">{scopeName(template.scope)}</span>
+                      </span>
+                      <span className="set-tpl-meta">
+                        {template.builtin ? "内置" : "自定义"}
+                        {template.enabled ? "" : "，已停用"}
+                        {`　${template.system.length} 字符`}
+                      </span>
+                    </button>
 
-                    <div className="settings-row">
-                      <div className="settings-row-label">
-                        Base URL
-                        <small>需要包含 /v1</small>
-                      </div>
-                      <div className="settings-row-body">
-                        <input
-                          className="input mono"
-                          value={settings.baseURL}
-                          onChange={(e) =>
-                            setSettings({ ...settings, baseURL: e.target.value })
-                          }
-                          placeholder="https://example.com/v1"
-                        />
-                        <div className="hint">
-                          平台会自动追加 /chat/completions
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="settings-row">
-                      <div className="settings-row-label">
-                        模型名
-                        <small>该端点支持的 ID</small>
-                      </div>
-                      <div className="settings-row-body">
-                        <input
-                          className="input mono"
-                          value={settings.model}
-                          onChange={(e) =>
-                            setSettings({ ...settings, model: e.target.value })
-                          }
-                          placeholder="deepseek-v4.1-flash"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="settings-row">
-                      <div className="settings-row-label">
-                        API Key
-                        <small>仅存本机</small>
-                      </div>
-                      <div className="settings-row-body">
-                        <div className="row" style={{ gap: 8 }}>
+                    {open ? (
+                      <div className="set-tpl-body">
+                        <div className="set-field">
+                          <label className="set-field-label" htmlFor="tpl-name">
+                            模板名称
+                          </label>
                           <input
-                            className="input mono"
-                            style={{ flex: 1, minWidth: 200 }}
-                            type={revealKey ? "text" : "password"}
-                            value={settings.apiKey}
-                            onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                apiKey: e.target.value,
-                              })
+                            id="tpl-name"
+                            className="set-input"
+                            value={draft.name}
+                            onChange={(event) =>
+                              setDraft({ ...draft, name: event.target.value })
                             }
-                            placeholder="sk-…"
                           />
+                        </div>
+
+                        <div className="set-field">
+                          <label className="set-field-label" htmlFor="tpl-system">
+                            系统提示词
+                          </label>
+                          <textarea
+                            id="tpl-system"
+                            className="set-textarea"
+                            style={{ minHeight: 260, lineHeight: 1.7 }}
+                            value={draft.system}
+                            spellCheck={false}
+                            onChange={(event) =>
+                              setDraft({ ...draft, system: event.target.value })
+                            }
+                          />
+                          <div className="set-hint">
+                            作用域是{scopeName(template.scope)}。
+                            可用变量：
+                            {PROMPT_VARIABLES.map((v) => ` {${v.name}}`).join("")}。
+                            请求前会被替换成真实值，写错名字的变量会原样留在提示词里。
+                          </div>
+                        </div>
+
+                        <div className="set-switch-row">
+                          <div>
+                            <div className="set-switch-text">参与提示词拼装</div>
+                            <div className="set-switch-sub">
+                              停用后这一块不会被拼进系统提示词，内容仍然保留。
+                            </div>
+                          </div>
                           <button
-                            className="btn btn-sm"
-                            onClick={() => setRevealKey((v) => !v)}
+                            type="button"
+                            className={`set-switch${template.enabled ? " on" : ""}`}
+                            role="switch"
+                            aria-checked={template.enabled}
+                            aria-label="参与提示词拼装"
+                            onClick={() =>
+                              void setPromptEnabled(template, !template.enabled)
+                            }
+                          />
+                        </div>
+
+                        <div className="set-actions">
+                          <button
+                            type="button"
+                            className="go"
+                            onClick={() => void savePrompt()}
+                            disabled={savingPrompt}
                           >
-                            {revealKey ? "隐藏" : "显示"}
+                            {savingPrompt ? "保存中…" : "保存这一条"}
+                          </button>
+                          <button type="button" onClick={closeEditor}>
+                            收起
+                          </button>
+                          <span className="spacer" />
+                          <button type="button" onClick={() => setPendingDelete(true)}>
+                            删除这条
                           </button>
                         </div>
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="settings-group">
-                    <div className="settings-group-head">
-                      <IconSpark width={15} height={15} />
-                      <h2>生成参数</h2>
-                    </div>
-
-                    <div className="settings-pair">
-                      <div className="field">
-                        <label>temperature：{settings.temperature}</label>
-                        <input
-                          type="range"
-                          min={0}
-                          max={2}
-                          step={0.1}
-                          value={settings.temperature}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              temperature: Number(e.target.value),
-                            })
-                          }
-                        />
-                        <div className="hint">
-                          训练对话建议 0.6，报告评分由系统固定为 0.3
-                        </div>
-                      </div>
-                      <div className="field">
-                        <label>maxTokens</label>
-                        <input
-                          className="input"
-                          type="number"
-                          min={64}
-                          max={200000}
-                          value={settings.maxTokens}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              maxTokens: Number(e.target.value),
-                            })
-                          }
-                        />
-                        <div className="hint">单次回复上限</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 提示词里的 {company_name} 取自这里 */}
-                  <div className="settings-group">
-                    <div className="settings-group-head">
-                      <IconUser width={15} height={15} />
-                      <h2>训练师身份</h2>
-                    </div>
-
-                    <div className="settings-row">
-                      <div className="settings-row-label">
-                        公司名
-                        <small>用于提示词变量</small>
-                      </div>
-                      <div className="settings-row-body">
-                        <input
-                          className="input"
-                          value={settings.companyName}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              companyName: e.target.value,
-                            })
-                          }
-                          placeholder="留空则显示为「本公司」"
-                        />
-                        <div className="hint">
-                          提示词里的 {"{company_name}"} 会替换成它，例如
-                          「你是 XX 的 AI产品经理训练师」
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="row">
-                    <button
-                      className="btn btn-primary"
-                      onClick={saveSettings}
-                      disabled={saving}
-                    >
-                      <IconCheck width={14} height={14} />
-                      {saving ? "保存中…" : "保存配置"}
-                    </button>
-                    <button className="btn" onClick={test} disabled={testing}>
-                      {testing ? "测试中…" : "测试连接"}
-                    </button>
-                  </div>
-
-                  {aiMessage ? (
-                    <div className={`notice ${aiMessage.tone}`}>
-                      {aiMessage.text}
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div className="loading">加载中…</div>
-              )}
-            </>
-          ) : section === "tools" ? (
-            <>
-              {settings ? (
-                <>
-                  <div className="settings-group">
-                    <div className="settings-group-head">
-                      <IconGlobe width={15} height={15} />
-                      <h2>联网搜索</h2>
-                    </div>
-
-                    <div className="settings-row">
-                      <div className="settings-row-label">
-                        开关
-                        <small>训练中可用</small>
-                      </div>
-                      <div className="settings-row-body">
-                        <label className="switch">
-                          <input
-                            type="checkbox"
-                            checked={settings.webSearch.enabled}
-                            onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                webSearch: {
-                                  ...settings.webSearch,
-                                  enabled: e.target.checked,
-                                },
-                              })
-                            }
-                          />
-                          <span className="switch-track" aria-hidden="true">
-                            <span className="switch-thumb" />
-                          </span>
-                          <span className="switch-text">
-                            {settings.webSearch.enabled ? "已启用" : "已关闭"}
-                          </span>
-                        </label>
-                        <div className="hint">
-                          开启后，AI 可以围绕训练题目和你的回答主动检索外部资料，
-                          并在回答里引用来源。
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="settings-row">
-                      <div className="settings-row-label">
-                        搜索来源
-                        <small>决定结果质量</small>
-                      </div>
-                      <div className="settings-row-body">
-                        <select
-                          className="select"
-                          value={settings.webSearch.provider}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              webSearch: {
-                                ...settings.webSearch,
-                                provider: e.target.value as WebSearchProvider,
-                              },
-                            })
-                          }
-                        >
-                          {(
-                            Object.keys(PROVIDER_LABELS) as WebSearchProvider[]
-                          ).map((id) => (
-                            <option key={id} value={id}>
-                              {PROVIDER_LABELS[id].name}
-                              {PROVIDER_LABELS[id].needsKey ? " · 需密钥" : ""}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="hint">
-                          {PROVIDER_LABELS[settings.webSearch.provider].hint}
-                        </div>
-                      </div>
-                    </div>
-
-                    {PROVIDER_LABELS[settings.webSearch.provider].needsKey ? (
-                      <div className="settings-row">
-                        <div className="settings-row-label">搜索 API Key</div>
-                        <div className="settings-row-body">
-                          <input
-                            className="input"
-                            type="password"
-                            value={settings.webSearch.apiKey}
-                            onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                webSearch: {
-                                  ...settings.webSearch,
-                                  apiKey: e.target.value,
-                                },
-                              })
-                            }
-                            placeholder="只保存在本机"
-                          />
-                        </div>
+                        {promptMessage ? (
+                          <div className="set-hint">{promptMessage}</div>
+                        ) : null}
                       </div>
                     ) : null}
-
-                    <div className="settings-row">
-                      <div className="settings-row-label">
-                        每次取几条
-                        <small>1 – 20</small>
-                      </div>
-                      <div className="settings-row-body">
-                        <input
-                          className="input"
-                          type="number"
-                          min={1}
-                          max={20}
-                          style={{ maxWidth: 120 }}
-                          value={settings.webSearch.maxResults}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              webSearch: {
-                                ...settings.webSearch,
-                                maxResults: Number(e.target.value),
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
                   </div>
+                );
+              })}
+            </div>
+          ))}
 
-                  <div className="settings-group">
-                    <div className="row" style={{ marginBottom: 4 }}>
-                      <div className="settings-group-head" style={{ flex: 1 }}>
-                        <IconPlug width={15} height={15} />
-                        <h2>MCP 服务器</h2>
-                      </div>
-                      <button className="btn btn-sm" onClick={addServer}>
-                        <IconPlus width={14} height={14} />
-                        添加服务器
-                      </button>
-                    </div>
+          <div className="set-actions">
+            <select
+              className="set-select"
+              style={{ width: "auto", minWidth: 190 }}
+              value={newScope}
+              aria-label="新模板的作用域"
+              onChange={(event) => setNewScope(event.target.value as PromptScope)}
+            >
+              {PROMPT_SCOPES.map((scope) => (
+                <option key={scope.id} value={scope.id}>
+                  {scope.group} ／ {scope.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="go" onClick={() => void createPrompt()}>
+              新建一条模板
+            </button>
+            {promptMessage && !openPrompt ? (
+              <span className="set-status bad">{promptMessage}</span>
+            ) : null}
+          </div>
 
-                    {settings.mcpServers.length === 0 ? (
-                      <div className="empty">
-                        还没有配置 MCP 服务器。加上之后，AI 就能调用它提供的工具。
-                      </div>
-                    ) : (
-                      <div className="stack" style={{ gap: 10 }}>
-                        {settings.mcpServers.map((server, index) => (
-                          <div key={server.id} className="mcp-card">
-                            <div className="mcp-card-head">
-                              <span className="mcp-index">
-                                {index + 1}
-                              </span>
-                              <input
-                                className="input"
-                                value={server.name}
-                                onChange={(e) =>
-                                  updateServer(server.id, {
-                                    name: e.target.value,
-                                  })
-                                }
-                                placeholder="名称，例如 GitHub"
-                              />
-                              <label className="switch switch-sm">
-                                <input
-                                  type="checkbox"
-                                  checked={server.enabled}
-                                  onChange={(e) =>
-                                    updateServer(server.id, {
-                                      enabled: e.target.checked,
-                                    })
-                                  }
-                                />
-                                <span
-                                  className="switch-track"
-                                  aria-hidden="true"
-                                >
-                                  <span className="switch-thumb" />
-                                </span>
-                              </label>
-                              <button
-                                className="btn btn-sm btn-ghost"
-                                onClick={() => removeServer(server.id)}
-                                title="移除这个服务器"
-                              >
-                                <IconTrash width={13} height={13} />
-                              </button>
-                            </div>
+          <div className="set-hint" style={{ marginTop: 14 }}>
+            训练时的系统提示词由「场景块 + 模式块」拼成，报告和对话各有一块。
+            内置模板删掉之后重启不会自动恢复，需要手动清掉 data/prompts.json。
+          </div>
+        </section>
 
-                            <input
-                              className="input"
-                              value={server.url}
-                              onChange={(e) =>
-                                updateServer(server.id, { url: e.target.value })
-                              }
-                              placeholder="MCP 端点，例如 https://mcp.example.com/mcp"
-                            />
-                            <input
-                              className="input"
-                              type="password"
-                              value={server.token}
-                              onChange={(e) =>
-                                updateServer(server.id, {
-                                  token: e.target.value,
-                                })
-                              }
-                              placeholder="访问令牌（可选，作为 Bearer 发送）"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
+        {/* ============================ 联网搜索 ============================ */}
+        <section className="section" id="search">
+          <div className="section-head">
+            <h2 className="section-title">联网搜索</h2>
+            <span className="set-status">
+              {webSearch?.enabled ? "已启用" : "未启用"}
+            </span>
+          </div>
 
-                    <div className="hint" style={{ marginTop: 10 }}>
-                      支持 Streamable HTTP 传输的 MCP 服务器。训练时会把它们提供的
-                      工具一并交给模型，由模型自己决定要不要调用。
-                    </div>
-                  </div>
+          <div className="set-switch-row">
+            <div>
+              <div className="set-switch-text">让训练师可以联网查资料</div>
+              <div className="set-switch-sub">
+                开启后，训练师会在需要时搜索，并把查到的东西留痕在对话里。
+              </div>
+            </div>
+            <button
+              type="button"
+              className={`set-switch${webSearch?.enabled ? " on" : ""}`}
+              role="switch"
+              aria-checked={webSearch?.enabled ?? false}
+              aria-label="让训练师可以联网查资料"
+              onClick={() => patchWebSearch({ enabled: !webSearch?.enabled })}
+            />
+          </div>
 
-                  <div className="row">
-                    <button
-                      className="btn btn-primary"
-                      onClick={saveSettings}
-                      disabled={saving}
-                    >
-                      <IconCheck width={14} height={14} />
-                      {saving ? "保存中…" : "保存配置"}
-                    </button>
-                  </div>
+          <div className="set-field">
+            <label className="set-field-label" htmlFor="set-provider">
+              搜索服务商
+            </label>
+            <select
+              id="set-provider"
+              className="set-select"
+              value={webSearch?.provider ?? "bing"}
+              onChange={(event) =>
+                patchWebSearch({
+                  provider: event.target.value as WebSearchProvider,
+                })
+              }
+            >
+              {(Object.keys(PROVIDER_LABELS) as WebSearchProvider[]).map((id) => (
+                <option key={id} value={id}>
+                  {PROVIDER_LABELS[id].name}（{PROVIDER_LABELS[id].needsKey ? "需要密钥" : "免费"}）
+                </option>
+              ))}
+            </select>
+            <div className="set-hint">
+              {webSearch ? PROVIDER_LABELS[webSearch.provider].hint : ""}
+            </div>
+          </div>
 
-                  {aiMessage ? (
-                    <div className={`notice ${aiMessage.tone}`}>
-                      {aiMessage.text}
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div className="loading">加载中…</div>
-              )}
-            </>
+          {webSearchNeedsKey ? (
+            <div className="set-field">
+              <span className="set-field-label">
+                搜索 API Key{" "}
+                <span className="set-status">
+                  {webSearch?.apiKey ? "已配置" : "未配置"}
+                </span>
+              </span>
+              <input
+                aria-label="搜索 API Key"
+                className="set-input set-input-key"
+                type="password"
+                autoComplete="new-password"
+                value={webSearch?.apiKey ?? ""}
+                onChange={(event) => patchWebSearch({ apiKey: event.target.value })}
+                placeholder="只保存在本机"
+              />
+              <div className="set-hint">
+                换成不需要密钥的服务商（Bing 或 DuckDuckGo）时，这一项会被收起来。
+              </div>
+            </div>
+          ) : null}
+
+          <div className="set-field">
+            <label className="set-field-label" htmlFor="set-maxresults">
+              每次最多取几条
+            </label>
+            <input
+              id="set-maxresults"
+              className="set-input set-input-num"
+              type="number"
+              min={1}
+              max={20}
+              step={1}
+              value={webSearch?.maxResults ?? 5}
+              onChange={(event) =>
+                patchWebSearch({ maxResults: Number(event.target.value) })
+              }
+            />
+            <div className="set-hint">可填 1 到 20。条数越多，注入提示词的内容越长。</div>
+          </div>
+
+          <div className="set-actions">
+            <button
+              type="button"
+              className="go"
+              onClick={() => void saveSettings()}
+              disabled={publishing || !ready}
+            >
+              {publishing ? "保存中…" : "保存"}
+            </button>
+            <span className="set-status">
+              {webSearchNeedsKey && !webSearch?.apiKey
+                ? "这个服务商需要密钥，没填就会搜索失败"
+                : "这一块和 AI 配置一起保存"}
+            </span>
+          </div>
+        </section>
+
+        {/* ============================ MCP 服务 ============================ */}
+        <section className="section" id="mcp">
+          <div className="section-head">
+            <h2 className="section-title">MCP 服务</h2>
+            <span className="set-status">
+              {settings.mcpServers.length} 个，{enabledServers} 个已启用
+            </span>
+          </div>
+
+          {settings.mcpServers.length === 0 ? (
+            <div className="empty-board">
+              <h3>还没有挂载 MCP 服务</h3>
+              <p>
+                挂载后，训练师可以调用这些工具去查资料、读文件、访问你的其他系统。
+                只支持 Streamable HTTP 传输的地址。
+              </p>
+              <div className="set-actions" style={{ justifyContent: "center", marginTop: 0 }}>
+                <button type="button" className="go" onClick={addServer}>
+                  添加一个服务
+                </button>
+              </div>
+            </div>
           ) : (
             <>
-              <div className="settings-group">
-                <div className="row" style={{ marginBottom: 4 }}>
-                  <div className="settings-group-head" style={{ flex: 1 }}>
-                    <IconSpark width={15} height={15} />
-                    <h2>提示词模板</h2>
-                  </div>
-                  <button className="btn btn-sm" onClick={createPrompt}>
-                    <IconPlus width={14} height={14} />
-                    新建模板
-                  </button>
-                </div>
-                <div className="settings-group-sub">
-                  点任意一条就地展开编辑；停用的块不参与拼装。
-                </div>
-
-                {/* 模板里能用的变量。写提示词时照着填，请求前会被替换成真实值。 */}
-                <div className="prompt-vars">
-                  <span className="prompt-vars-label">可用变量</span>
-                  {PROMPT_VARIABLES.map((v) => (
-                    <span
-                      key={v.name}
-                      className="prompt-var"
-                      title={v.desc}
-                    >
-                      {`{${v.name}}`}
+              {settings.mcpServers.map((server, index) => (
+                <div key={server.id} className="set-field">
+                  <span className="set-field-label">
+                    第 {index + 1} 个服务{" "}
+                    <span className="set-status">
+                      {server.enabled ? "已启用" : "已停用"}
                     </span>
-                  ))}
-                </div>
+                  </span>
 
-                <div className="stack" style={{ gap: 18 }}>
-                  {promptGroups.map(({ group, items }) => (
-                    <div key={group}>
-                      <div className="prompt-group-label">
-                        {group}
-                        <span className="prompt-group-count">
-                          {items.length}
-                        </span>
-                      </div>
-                      <div className="stack" style={{ gap: 6 }}>
-                        {items.map((template) => {
-                          const open = activePromptId === template.id;
-                          return (
-                            /* 就地展开：列表和编辑区合成一个组件。
-                               之前把编辑器放在列表下方，选完还得往下滚才能编辑，
-                               是最难用的一种做法。 */
-                            <div
-                              key={template.id}
-                              className={`acc${open ? " open" : ""}`}
-                            >
-                              <button
-                                className="acc-head"
-                                onClick={() =>
-                                  setActivePromptId(open ? null : template.id)
-                                }
-                                aria-expanded={open}
-                              >
-                                <span className="acc-chevron">
-                                  <IconChevronDown width={14} height={14} />
-                                </span>
-                                <span className="acc-head-text">
-                                  <span className="acc-title">
-                                    {template.name}
-                                  </span>
-                                  {!open ? (
-                                    <span className="acc-preview">
-                                      {template.system.slice(0, 70)}…
-                                    </span>
-                                  ) : null}
-                                </span>
-                                <span className="acc-tags">
-                                  {template.builtin ? (
-                                    <span className="tag">内置</span>
-                                  ) : null}
-                                  {!template.enabled ? (
-                                    <span className="tag tag-bad">已停用</span>
-                                  ) : null}
-                                </span>                              </button>
+                  <input
+                    className="set-input"
+                    value={server.name}
+                    aria-label={`第 ${index + 1} 个服务的名称`}
+                    onChange={(event) =>
+                      updateServer(server.id, { name: event.target.value })
+                    }
+                    placeholder="名称，例如 GitHub"
+                  />
 
-                              {open ? (
-                                <div className="acc-body">
-                                  {promptMessage ? (
-                                    <div className="notice notice-good">
-                                      {promptMessage}
-                                    </div>
-                                  ) : null}
+                  <div style={{ height: 18 }} />
 
-                                  <div className="field">
-                                    <label>模板名称</label>
-                                    <input
-                                      className="input"
-                                      value={draft.name}
-                                      onChange={(e) =>
-                                        setDraft({
-                                          ...draft,
-                                          name: e.target.value,
-                                        })
-                                      }
-                                    />
-                                  </div>
+                  <input
+                    className="set-input set-input-key"
+                    value={server.url}
+                    spellCheck={false}
+                    aria-label={`第 ${index + 1} 个服务的地址`}
+                    onChange={(event) =>
+                      updateServer(server.id, { url: event.target.value })
+                    }
+                    placeholder="https://mcp.example.com/mcp"
+                  />
+                  <div className="set-hint">{mcpUrlIssue(server.url)}</div>
 
-                                  <div className="field">
-                                    <label>系统提示词</label>
-                                    <textarea
-                                      className="textarea acc-textarea"
-                                      value={draft.system}
-                                      onChange={(e) =>
-                                        setDraft({
-                                          ...draft,
-                                          system: e.target.value,
-                                        })
-                                      }
-                                    />
-                                    <div className="hint">
-                                      作用域：{scopeName(template.scope)} ·{" "}
-                                      {draft.system.length} 字符 · 改完下一次训练生效
-                                    </div>
-                                  </div>
+                  <div style={{ height: 18 }} />
 
-                                  <div className="row">
-                                    <button
-                                      className="btn btn-primary"
-                                      onClick={savePrompt}
-                                      disabled={savingPrompt}
-                                    >
-                                      <IconCheck width={14} height={14} />
-                                      {savingPrompt ? "保存中…" : "保存"}
-                                    </button>
-                                    <button
-                                      className="btn"
-                                      onClick={() => togglePrompt(template)}
-                                    >
-                                      {template.enabled
-                                        ? "停用这一块"
-                                        : "启用这一块"}
-                                    </button>
-                                    <div className="spacer" />
-                                    <button
-                                      className="btn btn-danger"
-                                      onClick={() => setConfirmingDelete(true)}
-                                    >
-                                      <IconTrash width={13} height={13} />
-                                      删除
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })}
+                  <input
+                    className="set-input set-input-key"
+                    type="password"
+                    autoComplete="new-password"
+                    value={server.token}
+                    aria-label={`第 ${index + 1} 个服务的访问令牌`}
+                    onChange={(event) =>
+                      updateServer(server.id, { token: event.target.value })
+                    }
+                    placeholder="访问令牌，可留空"
+                  />
+                  <div className="set-hint">
+                    作为 Authorization: Bearer 发送，留空则不带。
+                    {server.token ? " 已配置。" : ""}
+                  </div>
+
+                  <div className="set-switch-row">
+                    <div>
+                      <div className="set-switch-text">启用这个服务</div>
+                      <div className="set-switch-sub">
+                        停用后不再把它的工具交给模型。
                       </div>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      className={`set-switch${server.enabled ? " on" : ""}`}
+                      role="switch"
+                      aria-checked={server.enabled}
+                      aria-label={`启用第 ${index + 1} 个服务`}
+                      onClick={() =>
+                        updateServer(server.id, { enabled: !server.enabled })
+                      }
+                    />
+                  </div>
+
+                  <div className="set-actions" style={{ marginTop: 18 }}>
+                    <button type="button" onClick={() => removeServer(server.id)}>
+                      移除这个服务
+                    </button>
+                    <span className="set-status">
+                      名称为空的条目保存时会被丢掉
+                    </span>
+                  </div>
                 </div>
+              ))}
+
+              <div className="set-actions">
+                <button type="button" onClick={addServer}>
+                  再加一个服务
+                </button>
               </div>
             </>
           )}
-        </div>
+
+          <div className="set-actions">
+            <button
+              type="button"
+              className="go"
+              onClick={() => void saveSettings()}
+              disabled={publishing || !ready}
+            >
+              {publishing ? "保存中…" : "保存"}
+            </button>
+          </div>
+        </section>
+
+        {/* ============================ 数据与备份 ============================ */}
+        <section className="section" id="data">
+          <div className="section-head">
+            <h2 className="section-title">数据与备份</h2>
+            <span className="set-status">data/ 目录</span>
+          </div>
+
+          <div className="set-switch-row">
+            <div>
+              <div className="set-switch-text">
+                方法论词条{stats ? `（${stats.methodology} 条）` : ""}
+              </div>
+              <div className="set-switch-sub">data/methodology.json</div>
+            </div>
+            <span className={`set-status${stats ? "" : " bad"}`}>
+              {stats ? "正常" : statsError || "读取中"}
+            </span>
+          </div>
+
+          <div className="set-switch-row">
+            <div>
+              <div className="set-switch-text">
+                训练场次{stats ? `（${stats.sessions} 场）` : ""}
+              </div>
+              <div className="set-switch-sub">data/sessions.json</div>
+            </div>
+            <span className={`set-status${stats ? "" : " bad"}`}>
+              {stats ? "正常" : statsError || "读取中"}
+            </span>
+          </div>
+
+          <div className="set-switch-row">
+            <div>
+              <div className="set-switch-text">
+                记录总结{stats ? `（${stats.captures} 条）` : ""}
+              </div>
+              <div className="set-switch-sub">
+                data/captures.json{stats && stats.captures === 0 ? "，还没有记录" : ""}
+              </div>
+            </div>
+            <span
+              className={`set-status${
+                stats && stats.captures > 0 ? "" : " bad"
+              }`}
+            >
+              {stats ? (stats.captures > 0 ? "正常" : "空") : statsError || "读取中"}
+            </span>
+          </div>
+
+          <div className="set-switch-row">
+            <div>
+              <div className="set-switch-text">
+                提示词模板（{prompts.length} 条）
+              </div>
+              <div className="set-switch-sub">data/prompts.json</div>
+            </div>
+            <span className="set-status">正常</span>
+          </div>
+
+          <div className="set-switch-row">
+            <div>
+              <div className="set-switch-text">接口密钥</div>
+              <div className="set-switch-sub">
+                保存在 data/settings.json，这个目录已在 .gitignore 里
+              </div>
+            </div>
+            <span className="set-status">
+              {form.apiKey ? "已配置" : "未配置"}
+            </span>
+          </div>
+
+          <div className="set-actions">
+            <button
+              type="button"
+              className="go"
+              onClick={() => {
+                setActive("ai");
+                document
+                  .getElementById("ai")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
+              去 AI 配置
+            </button>
+            <span className="set-status">
+              导出和恢复还没有接上接口，先用 data/ 目录直接备份
+            </span>
+          </div>
+        </section>
+
+        {error ? <div className="notice notice-error">{error}</div> : null}
       </div>
 
       <ConfirmDialog
-        open={confirmingDelete}
+        open={pendingDelete}
         title="删除提示词模板"
-        message="内置模板无法自动还原。删除后需要手动删掉 data/prompts.json 才能恢复默认，确定继续？"
-        onConfirm={resetPrompt}
-        onCancel={() => setConfirmingDelete(false)}
+        message="内置模板删掉之后，重启不会自动恢复；要恢复得手动清掉 data/prompts.json。确定删除这一条吗？"
+        onConfirm={() => void deletePrompt()}
+        onCancel={() => setPendingDelete(false)}
       />
     </div>
   );

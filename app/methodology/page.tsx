@@ -6,14 +6,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { DOMAINS, SCENARIOS, scenarioName } from "@/lib/catalog";
 import { apiGet, apiSend } from "@/lib/client";
-import {
-  IconArrowRight,
-  IconEdit,
-  IconPlus,
-  IconSave,
-  IconTrash,
-} from "@/components/icons";
-import { FolderTabs } from "@/components/FolderTabs";
+import { assignTilts, plainSummary, tiltStyle } from "@/lib/board";
+import { IconPlus, IconSave } from "@/components/icons";
 import { ConfirmDialog, Modal } from "@/components/Modal";
 import type { MethodologyCard, TrainingScenario } from "@/lib/types";
 
@@ -108,6 +102,17 @@ function MethodologyPageInner() {
     });
   }, [cards, domainFilter, query]);
 
+  /* 便签角度按 id 定：每个条目都不撞，且每次打开都一样（便于位置记忆）。
+     注意要按全部卡片算，不能按 filtered 算 —— 否则一筛选角度就全变了。 */
+  const TILTS = useMemo(() => assignTilts(cards), [cards]);
+
+  /* 点便签 = 直接进详情页。
+     不再「点一下先在下面长出一条菜单」—— 多一次点击换来的选项，
+     其实悬停在卡片上就已经给了，那一步是多余的。 */
+  function openCard(card: MethodologyCard) {
+    router.push(`/methodology/${card.id}`);
+  }
+
   function startCreate() {
     setEditingId(null);
     setForm(EMPTY_FORM);
@@ -193,15 +198,12 @@ function MethodologyPageInner() {
     <div className="stack">
       <div className="page-head">
         <div>
-          <h1>方法论 / 知识点</h1>
+          <h1>方法论</h1>
+          <p className="lede">
+            跨领域的知识点，一张卡一个概念。定义要能用一句话说清，说不清就是还没懂。
+          </p>
         </div>
         <div className="page-actions">
-          <input
-            className="input"
-            placeholder="搜索知识点…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
           <button className="btn btn-primary" onClick={startCreate}>
             <IconPlus width={15} height={15} />
             新增知识点
@@ -211,18 +213,41 @@ function MethodologyPageInner() {
 
       {error ? <div className="notice notice-error">{error}</div> : null}
 
-      <FolderTabs
-        tabs={[
-          { id: "all", label: "全部领域", count: cards.length },
-          ...domainsPresent.map((domain) => ({
-            id: domain,
-            label: domain,
-            count: cards.filter((c) => c.domain === domain).length,
-          })),
-        ]}
-        active={domainFilter}
-        onSelect={setDomainFilter}
-      />
+      {/* 检索 + 领域筛选。接口没有查询参数，过滤全在前端。 */}
+      <div className="controls">
+        <label className="lookup">
+          <input
+            placeholder="搜索知识点…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="搜索知识点"
+          />
+          <span className="lookup-hint">
+            {filtered.length === cards.length
+              ? `${cards.length} 张中检索`
+              : `显示 ${filtered.length} / ${cards.length}`}
+          </span>
+        </label>
+
+        <div className="filters">
+          <button
+            className={domainFilter === "all" ? "on" : ""}
+            onClick={() => setDomainFilter("all")}
+          >
+            全部 {cards.length}
+          </button>
+          {domainsPresent.map((domain) => (
+            <button
+              key={domain}
+              className={domainFilter === domain ? "on" : ""}
+              onClick={() => setDomainFilter(domain)}
+            >
+              {domain}{" "}
+              {cards.filter((c) => c.domain === domain).length}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <Modal
         open={showForm}
@@ -257,7 +282,7 @@ function MethodologyPageInner() {
           <div className="field">
             <label>领域</label>
             <input
-              className="input"
+              className="form-input"
               list="domain-options"
               value={form.domain}
               onChange={(e) => setForm({ ...form, domain: e.target.value })}
@@ -270,15 +295,15 @@ function MethodologyPageInner() {
           </div>
           <div className="field">
             <label>适用训练场景</label>
-            <div className="row" style={{ gap: 6 }}>
+            <div className="form-choice">
               {SCENARIOS.map((scenario) => {
                 const on = form.scenarios.includes(scenario.id);
                 return (
                   <button
                     key={scenario.id}
                     type="button"
-                    className={`tag${on ? " tag-brand" : ""}`}
-                    style={{ cursor: "pointer" }}
+                    className="form-choice-chip"
+                    data-on={on ? "true" : "false"}
                     onClick={() =>
                       setForm({
                         ...form,
@@ -299,7 +324,7 @@ function MethodologyPageInner() {
         <div className="field">
           <label>知识点名称</label>
           <input
-            className="input"
+            className="form-input"
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
             placeholder="例如：损失厌恶"
@@ -309,7 +334,7 @@ function MethodologyPageInner() {
         <div className="field">
           <label>一句话定义</label>
           <input
-            className="input"
+            className="form-input"
             value={form.oneLiner}
             onChange={(e) => setForm({ ...form, oneLiner: e.target.value })}
             placeholder="能用一句话说清，才算真的理解"
@@ -319,7 +344,7 @@ function MethodologyPageInner() {
         <div className="field">
           <label>展开说明</label>
           <textarea
-            className="textarea"
+            className="form-textarea"
             value={form.detail}
             onChange={(e) => setForm({ ...form, detail: e.target.value })}
             placeholder="原理、适用边界、常见误区"
@@ -329,7 +354,7 @@ function MethodologyPageInner() {
         <div className="field">
           <label>在产品工作里怎么用</label>
           <textarea
-            className="textarea"
+            className="form-textarea"
             value={form.howToUse}
             onChange={(e) => setForm({ ...form, howToUse: e.target.value })}
           />
@@ -338,65 +363,113 @@ function MethodologyPageInner() {
         <div className="field">
           <label>具体例子</label>
           <textarea
-            className="textarea"
+            className="form-textarea"
             value={form.example}
             onChange={(e) => setForm({ ...form, example: e.target.value })}
           />
         </div>
       </Modal>
 
-      <div className="folder-pane">
+      {/* 便签直接摊在板面上，不套任何面板。
+          之前这里有个 .folder-pane（白底 + 描边 + 圆角），是旧版档案标签
+          的残留 —— 它把便签压在一块白板上，纸和板的关系就没了。 */}
+      <div>
         {loading ? (
           <div className="loading">加载中…</div>
         ) : filtered.length === 0 ? (
-          <div className="empty">没有匹配的知识点。</div>
+          <div className="empty-board">
+            <h3>{cards.length === 0 ? "还没有知识点" : "没有匹配的知识点"}</h3>
+            <p>
+              {cards.length === 0
+                ? "读书、看文章时遇到的概念，随手记成一张卡。攒到十几张，训练时就有东西可引了。"
+                : "换个关键词，或者把领域筛选切回全部。"}
+            </p>
+          </div>
         ) : (
-          <div className="grid grid-2">
+          <div className="wall">
             {filtered.map((card) => (
-              <div key={card.id} className="card card-tight">
-                <div className="row" style={{ marginBottom: 6, gap: 6 }}>
-                  <span className="tag tag-brand">{card.domain}</span>
-                  {card.scenarios.map((s) => (
-                    <span key={s} className="tag">
-                      {scenarioName(s)}
+              <article
+                key={card.id}
+                className="note"
+                style={tiltStyle(TILTS[card.id] ?? 0)}
+                onClick={() => openCard(card)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openCard(card);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label={`查看「${card.title}」`}
+              >
+                <span className="note-pin" aria-hidden="true" />
+
+                <div className="note-domain">
+                  <span>{card.domain}</span>
+                  <span className="state-mark">
+                    {card.builtin ? "内置" : "自建"}
+                  </span>
+                </div>
+
+                <h2 className="note-title">{card.title}</h2>
+                {/* 便签正文是纯文本节点，不渲染 markdown ——
+                    标记会原样露出来（训练师便签上出现过字面 `**`）。
+                    这里是同一类隐患，取摘要时一并剥掉。 */}
+                <p className="note-def">{plainSummary(card.oneLiner, 180)}</p>
+                {card.detail ? (
+                  <p className="note-detail">{plainSummary(card.detail, 300)}</p>
+                ) : null}
+
+                {card.scenarios.length > 0 ? (
+                  <div className="note-tags">
+                    {card.scenarios.map((s) => (
+                      <span key={s}>{scenarioName(s)}</span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {/* 三个动作挂在页脚这一行的右侧，不单独占一行 ——
+                    单独一行会让每张纸都长高 36px，整面墙跟着变稀。
+                    用绝对定位贴在页脚右端：文字「有用法」在左，动作在右，
+                    互不挤压；不悬停时整块透明且不接事件。 */}
+                <div className="note-foot">
+                  <span>{card.howToUse ? "有用法" : "只有定义"}</span>
+
+                  <span className="note-ops">
+                    <Link
+                      href={`/methodology/${card.id}`}
+                      className="note-op"
+                      onClick={(e) => e.stopPropagation()}
+                      tabIndex={-1}
+                    >
+                      打开
+                    </Link>
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      className="note-op"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEdit(card);
+                      }}
+                    >
+                      编辑
                     </span>
-                  ))}
-                  {card.builtin ? <span className="tag">内置</span> : null}
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      className="note-op note-op-danger"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingDelete(card);
+                      }}
+                    >
+                      删除
+                    </span>
+                  </span>
                 </div>
-
-                <div className="list-title">{card.title}</div>
-                <div className="list-sub">{card.oneLiner}</div>
-
-                {/* 详情是「一个独立的东西」，所以给它一个独立页面：
-                    有 URL、能新窗口打开、能后退、内容再长也不挤。
-                    之前用侧边抽屉装详情，是层级设计上的偷懒。 */}
-                <div className="card-actions">
-                  <Link
-                    href={`/methodology/${card.id}`}
-                    className="btn btn-sm btn-ghost card-open"
-                  >
-                    查看详情
-                    <IconArrowRight width={13} height={13} />
-                  </Link>
-                  <div className="spacer" />
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => startEdit(card)}
-                    title="编辑"
-                  >
-                    <IconEdit width={13} height={13} />
-                    编辑
-                  </button>
-                  <button
-                    className="btn btn-sm btn-danger"
-                    onClick={() => setPendingDelete(card)}
-                    title="删除"
-                  >
-                    <IconTrash width={13} height={13} />
-                    删除
-                  </button>
-                </div>
-              </div>
+              </article>
             ))}
           </div>
         )}

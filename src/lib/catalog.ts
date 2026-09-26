@@ -6,6 +6,8 @@
 import type {
   CaptureKind,
   PromptScope,
+  QuestionKind,
+  QuestionStatus,
   ScenarioRubricItem,
   ScenarioStep,
   TrainingMode,
@@ -259,4 +261,51 @@ export function captureKindName(id: CaptureKind): string {
 
 export function scopeName(id: PromptScope): string {
   return PROMPT_SCOPES.find((s) => s.id === id)?.name ?? id;
+}
+
+/* ------------------------------------------------------------------ *
+ * 题库
+ * ------------------------------------------------------------------ */
+
+export const QUESTION_KINDS: { id: QuestionKind; name: string; blurb: string }[] = [
+  { id: "interview", name: "面试真题", blurb: "面试里真被问到的题" },
+  { id: "thinking", name: "思考题", blurb: "自己想的、或别人抛来的问题" },
+  { id: "other", name: "其它", blurb: "还没归类的题" },
+];
+
+export const QUESTION_STATUSES: {
+  id: QuestionStatus;
+  name: string;
+}[] = [
+  { id: "open", name: "待作答" },
+  { id: "answered", name: "已作答" },
+  { id: "archived", name: "已归档" },
+];
+
+export function questionKindName(id: QuestionKind): string {
+  return QUESTION_KINDS.find((k) => k.id === id)?.name ?? id;
+}
+
+export function questionStatusName(id: QuestionStatus): string {
+  return QUESTION_STATUSES.find((s) => s.id === id)?.name ?? id;
+}
+
+/**
+ * 题卡的「五格进度」：五个块各自有没有内容。
+ * 顺序固定，跟详情页的块顺序一致，这样进度条本身就能当目录读。
+ */
+export function questionProgress(q: {
+  prompt: string;
+  myAnswer: string;
+  aiAnswer: string;
+  related: unknown[];
+  readings: unknown[];
+}): { key: string; name: string; done: boolean; mine: boolean }[] {
+  return [
+    { key: "prompt", name: "题目", done: q.prompt.trim() !== "", mine: false },
+    { key: "mine", name: "我的回答", done: q.myAnswer.trim() !== "", mine: true },
+    { key: "ai", name: "AI 回答", done: q.aiAnswer.trim() !== "", mine: false },
+    { key: "related", name: "相关知识", done: q.related.length > 0, mine: false },
+    { key: "readings", name: "推荐阅读", done: q.readings.length > 0, mine: false },
+  ];
 }

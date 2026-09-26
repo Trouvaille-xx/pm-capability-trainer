@@ -1,21 +1,88 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { CAPTURE_KINDS, DOMAINS, captureKindName } from "@/lib/catalog";
 import { apiGet, apiSend, formatDate } from "@/lib/client";
-import {
-  IconArrowRight,
-  IconEdit,
-  IconPlus,
-  IconSave,
-  IconTrash,
-} from "@/components/icons";
-import { FolderTabs } from "@/components/FolderTabs";
 import { ConfirmDialog, Modal } from "@/components/Modal";
 import type { Capture, CaptureKind } from "@/lib/types";
+
+/* ------------------------------------------------------------------ *
+ * 显示口径
+ *
+ * 状态一律写成方括号里的批注记号（[待整理]）——.state-mark 的 ::before/::after
+ * 会自动补上方括号。不用彩色胶囊，也不把元信息用「·」串起来。
+ * ------------------------------------------------------------------ */
+
+const STATUS_TEXT: Record<Capture["status"], string> = {
+  inbox: "待整理",
+  doing: "整理中",
+  done: "已消化",
+};
+
+const STATUSES: Capture["status"][] = ["inbox", "doing", "done"];
+
+/** 筛选口径：全部 / 三种类型 / 待整理。 */
+type Filter = "all" | CaptureKind | "inbox";
+
+/* 详情页的「编辑」通过这个参数把用户带回来直接打开表单。 */
+const EDIT_PARAM = "edit";
+
+/**
+ * 便签倾角。
+ *
+ * 参考稿要求「每个条目的角度都不一样，且同一条目每次都一样」：
+ * 先按 id 哈希排定名次，再把一批互不相等的候选角度按名次分配。
+ * 所以新增一条不会让已有的便签改变倾角（位置记得住）。
+ */
+function tiltPool(size: number): number[] {
+  const min = 3.5;
+  const max = 15;
+  const steps = Math.max(1, Math.floor((size - 1) / 2));
+  const out: number[] = [];
+  for (let i = 0; i < size; i += 1) {
+    const sign = i % 2 === 0 ? 1 : -1;
+    const rank = Math.floor(i / 2);
+    out.push(sign * (min + ((max - min) * rank) / steps));
+  }
+  return out.map((v) => Math.round(v * 10) / 10);
+}
+
+function hashId(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i += 1) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function assignTilts(items: Capture[]): Record<string, number> {
+  if (items.length === 0) return {};
+  const pool = tiltPool(items.length);
+  const order = items
+    .map((item, index) => ({ index, key: hashId(item.id) }))
+    .sort((a, b) => a.key - b.key)
+    .map((entry) => entry.index);
+
+  const map: Record<string, number> = {};
+  order.forEach((itemIndex, rank) => {
+    map[items[itemIndex].id] = pool[rank];
+  });
+  return map;
+}
+
+/** 五格星级：实心 ★、空心 ☆。列表里不染色，朱砂留给「你在这里」。 */
+function StarMark({ rating }: { rating: number }) {
+  return (
+    <span className="stars" title={rating > 0 ? `${rating} 星` : "未评分"}>
+      {[1, 2, 3, 4, 5].map((n) =>
+        n <= rating ? <b key={n}>★</b> : <span key={n}>☆</span>,
+      )}
+    </span>
+  );
+}
 
 interface FormState {
   kind: CaptureKind;
@@ -52,7 +119,7 @@ function toForm(capture: Capture): FormState {
     author: capture.author,
     source: capture.source,
     status: capture.status,
-    tags: capture.tags.join(", "),
+    tags: capture.tags.join("，"),
     domains: capture.domains,
     summary: capture.summary,
     keyPoints: capture.keyPoints.join("\n"),
@@ -70,7 +137,7 @@ function toForm(capture: Capture): FormState {
  */
 export default function CapturePage() {
   return (
-    <Suspense fallback={<div className="stack"><div className="loading">加载中…</div></div>}>
+    <Suspense fallback={<div className="loading">加载中…</div>}>
       <CapturePageInner />
     </Suspense>
   );
@@ -83,16 +150,25 @@ function CapturePageInner() {
   const [items, setItems] = useState<Capture[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [kindFilter, setKindFilter] = useState<CaptureKind | "all">("all");
+  const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<Capture | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
+  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  /** 正在改状态 / 评分的便签 id，避免连点。 */
+  const [busyId, setBusyId] = useState<string | null>(null);
+  /**
+   * 拿起来的那张便签。
+   *
+   * 便签是纸，纸不长按钮 —— 先点一张「拿起来」，操作集中出现在板下方。
+   * 再点同一张就放回去，点另一张就换手。
+   */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Capture | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -109,25 +185,40 @@ function CapturePageInner() {
     void load();
   }, [load]);
 
-  // 支持从详情页「编辑」跳过来：/capture?edit=<id> 直接打开编辑弹窗
-  const editParam = searchParams.get("edit");
+  const editParam = searchParams.get(EDIT_PARAM);
   useEffect(() => {
     if (!editParam || items.length === 0) return;
     const target = items.find((item) => item.id === editParam);
     if (target) {
       setEditingId(target.id);
       setForm(toForm(target));
+      setFormError("");
       setShowForm(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editParam, items]);
 
+  const counts = useMemo(
+    () =>
+      ({
+        all: items.length,
+        book: items.filter((i) => i.kind === "book").length,
+        article: items.filter((i) => i.kind === "article").length,
+        note: items.filter((i) => i.kind === "note").length,
+        inbox: items.filter((i) => i.status === "inbox").length,
+      }) satisfies Record<Filter, number>,
+    [items],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((item) => {
-      if (kindFilter !== "all" && item.kind !== kindFilter) return false;
+      if (filter === "inbox" && item.status !== "inbox") return false;
+      if (filter !== "all" && filter !== "inbox" && item.kind !== filter) {
+        return false;
+      }
       if (q === "") return true;
-      const haystack = [
+      return [
         item.title,
         item.author,
         item.source,
@@ -138,10 +229,39 @@ function CapturePageInner() {
         item.domains.join(" "),
       ]
         .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
+        .toLowerCase()
+        .includes(q);
     });
-  }, [items, kindFilter, query]);
+  }, [items, filter, query]);
+
+  const tilts = useMemo(() => assignTilts(items), [items]);
+
+  /** 选中的那张。它被筛掉或删掉之后，操作条要自己收起来。 */
+  const selected = useMemo(
+    () => items.find((item) => item.id === selectedId) ?? null,
+    [items, selectedId],
+  );
+
+  function toggleSelect(id: string) {
+    setSelectedId((prev) => (prev === id ? null : id));
+  }
+
+  /**
+   * Esc 把拿起来的那张放回去。
+   * 搜索框里按 Esc 是在清检索词（用户的意图更具体），所以输入框内不抢。
+   */
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      const t = document.activeElement as HTMLElement | null;
+      if (t && typeof t.closest === "function" && t.closest("input,textarea,select")) {
+        return;
+      }
+      setSelectedId(null);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   function startCreate() {
     setEditingId(null);
@@ -162,23 +282,38 @@ function CapturePageInner() {
     setFormError("");
     setEditingId(null);
     setForm(EMPTY_FORM);
-    // 从详情页带 ?edit=xxx 进来时，关掉弹窗要把参数清掉
-    if (searchParams.get("edit")) router.replace("/capture");
+    // 从详情页带 ?edit=xxx 进来时，关掉表单要把参数清掉
+    if (searchParams.get(EDIT_PARAM)) router.replace("/capture");
   }
 
   async function save() {
-    if (form.title.trim() === "") {
-      setFormError("标题不能为空");
+    const title = form.title.trim();
+    if (title === "") {
+      setFormError("先给它起个标题。");
       return;
     }
+    const keyPoints = form.keyPoints
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    // POST 会校验这条，PATCH 不会 —— 前端自己兜住：没有正文的记录没有价值。
+    if (
+      form.summary.trim() === "" &&
+      form.thoughts.trim() === "" &&
+      keyPoints.length === 0
+    ) {
+      setFormError("「内容总结」「关键要点」「笔记思考」至少要写一处。");
+      return;
+    }
+
     setSaving(true);
     setFormError("");
     try {
       const payload = {
         kind: form.kind,
-        title: form.title,
-        author: form.author,
-        source: form.source,
+        title,
+        author: form.author.trim(),
+        source: form.source.trim(),
         status: form.status,
         tags: form.tags
           .split(/[,，]/)
@@ -186,10 +321,7 @@ function CapturePageInner() {
           .filter(Boolean),
         domains: form.domains,
         summary: form.summary,
-        keyPoints: form.keyPoints
-          .split("\n")
-          .map((t) => t.trim())
-          .filter(Boolean),
+        keyPoints,
         thoughts: form.thoughts,
         rating: form.rating,
       };
@@ -208,11 +340,34 @@ function CapturePageInner() {
     }
   }
 
+  /** 就地改状态或评分。失败就把服务端的话原样摆在墙上。 */
+  async function patchCapture(
+    capture: Capture,
+    changes: Partial<Pick<Capture, "status" | "rating">>,
+  ) {
+    setBusyId(capture.id);
+    try {
+      await apiSend<Capture>(`/api/captures/${capture.id}`, "PATCH", changes);
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === capture.id ? { ...item, ...changes } : item,
+        ),
+      );
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "改动没保存上");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  /** 撕掉一张。确认之后才真的删，删完把选中态也放掉。 */
   async function destroy() {
     if (!pendingDelete) return;
     setDeleting(true);
     try {
       await apiSend(`/api/captures/${pendingDelete.id}`, "DELETE");
+      if (selectedId === pendingDelete.id) setSelectedId(null);
       setPendingDelete(null);
       await load();
     } catch (e) {
@@ -222,324 +377,491 @@ function CapturePageInner() {
     }
   }
 
+  const total = items.length;
+  const hasBody =
+    form.summary.trim() !== "" ||
+    form.thoughts.trim() !== "" ||
+    form.keyPoints.trim() !== "";
+
   return (
     <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>记录总结</h1>
+      <header>
+        <div className="page-head">
+          <div>
+            <h1>记录总结</h1>
+            <div className="lede">
+              板上 {total} 张，还有 {counts.inbox} 张没整理。
+            </div>
+          </div>
+          <div className="viewswitch">
+            <button
+              type="button"
+              className="vs-btn on"
+              onClick={startCreate}
+              title="新建一条记录"
+            >
+              钉一张便签
+            </button>
+          </div>
         </div>
-        <div className="page-actions">
-          <input
-            className="input"
-            placeholder="搜索标题 / 标签 / 正文…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <button className="btn btn-primary" onClick={startCreate}>
-            <IconPlus width={15} height={15} />
-            新建记录
+
+        <div className="controls">
+          <div className="lookup">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="在便签里查…"
+              aria-label="在便签里查"
+            />
+            <span className="lookup-hint">
+              {query.trim() === ""
+                ? `${total} 张中检索`
+                : `显示 ${filtered.length} / ${total}`}
+            </span>
+          </div>
+
+          <div className="filters">
+            {(
+              [
+                ["all", "全部"],
+                ["book", "图书"],
+                ["article", "文章"],
+                ["note", "笔记"],
+                ["inbox", "待整理"],
+              ] as [Filter, string][]
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={filter === id ? "on" : ""}
+                aria-pressed={filter === id}
+                onClick={() => setFilter(id)}
+              >
+                {label}
+                <span className="count">{counts[id]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      {error ? (
+        <div className="board-error">
+          <span className="notice notice-error">{error}</span>
+          <button type="button" onClick={() => void load()}>
+            重新读取
           </button>
         </div>
-      </div>
+      ) : null}
 
-      {error ? <div className="notice notice-error">{error}</div> : null}
+      <section className="board">
+        {loading ? (
+          <div className="loading">正在读 data/captures.json…</div>
+        ) : total === 0 ? (
+          /* 真实空态：data/captures.json 还不存在，这块板本来就是空的。
+             所以这不是占位符，是它现在的样子。 */
+          <div className="wall">
+            <div className="empty-board">
+              <h3>这块板还是空的</h3>
+              <p>
+                读到一段话、看到一个例子、脑子里闪过一个念头，都可以钉在这里。
+                <br />
+                定好标题，写下原文，再写一句「我从中想到了什么」。
+                <br />
+                攒够几张之后，可以把它们提炼成方法论词条。
+              </p>
+              <div className="hint-actions">
+                <button type="button" className="go" onClick={startCreate}>
+                  记第一条
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="wall">
+            <div className="empty-board">
+              <h3>没有对上的便签</h3>
+              <p>换个词再查，或者把筛选调回全部。</p>
+              <div className="hint-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    setFilter("all");
+                  }}
+                >
+                  清掉筛选
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="wall">
+            {filtered.map((capture) => {
+              const lifted = selectedId === capture.id;
+              const foot =
+                [capture.author, capture.source].filter(Boolean).join("，") ||
+                formatDate(capture.createdAt);
+              return (
+                <article
+                  key={capture.id}
+                  className="note"
+                  data-lifted={lifted}
+                  style={
+                    {
+                      "--tilt": `${tilts[capture.id] ?? 0}deg`,
+                    } as React.CSSProperties
+                  }
+                  tabIndex={0}
+                  role="button"
+                  aria-pressed={lifted}
+                  aria-label={`${capture.title}（选中后可在板下方操作）`}
+                  onClick={() => toggleSelect(capture.id)}
+                  onDoubleClick={() => router.push(`/capture/${capture.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleSelect(capture.id);
+                    }
+                  }}
+                >
+                  <span className="note-pin" aria-hidden="true" />
 
-      <FolderTabs
-        tabs={[
-          { id: "all", label: "全部", count: items.length },
-          ...CAPTURE_KINDS.map((kind) => ({
-            id: kind.id,
-            label: kind.name,
-            count: items.filter((i) => i.kind === kind.id).length,
-          })),
-        ]}
-        active={kindFilter}
-        onSelect={(id) => setKindFilter(id as CaptureKind | "all")}
-      />
+                  <div className="note-domain">
+                    <span>{captureKindName(capture.kind)}</span>
+                    <span className="state-mark">
+                      {STATUS_TEXT[capture.status]}
+                    </span>
+                  </div>
+
+                  <h2 className="note-title">{capture.title}</h2>
+
+                  {capture.summary ? (
+                    <p className="note-detail">{capture.summary}</p>
+                  ) : null}
+
+                  {capture.keyPoints.length > 0 ? (
+                    <ul className="note-points">
+                      {capture.keyPoints.slice(0, 3).map((point, index) => (
+                        <li key={index}>{point}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+
+                  {capture.rating > 0 ? <StarMark rating={capture.rating} /> : null}
+
+                  {capture.tags.length > 0 ? (
+                    <div className="note-tags">
+                      {capture.tags.slice(0, 4).map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="note-foot">
+                    <span>{foot}</span>
+                    <span className="spacer" />
+                    <span className="note-open">打开</span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* 板下操作条：纸不长按钮，拿起一张之后操作才出现。
+          它常驻在板底（sticky），所以不会随选中项的位置跳动。 */}
+      {selected ? (
+        <div className="board-bar">
+          <span className="board-bar-title">{selected.title}</span>
+
+          <button
+            type="button"
+            className="board-bar-btn"
+            onClick={() => router.push(`/capture/${selected.id}`)}
+          >
+            打开
+          </button>
+
+          {STATUSES.map((status) => (
+            <button
+              key={status}
+              type="button"
+              className={`board-bar-btn${
+                selected.status === status ? " on" : ""
+              }`}
+              disabled={busyId === selected.id}
+              aria-pressed={selected.status === status}
+              onClick={() => void patchCapture(selected, { status })}
+            >
+              {STATUS_TEXT[status]}
+            </button>
+          ))}
+
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={`board-bar-btn${selected.rating >= n ? " on" : ""}`}
+              disabled={busyId === selected.id}
+              aria-label={`评 ${n} 星`}
+              title={selected.rating === n ? "再点一次取消评分" : `评 ${n} 星`}
+              aria-pressed={selected.rating === n}
+              /* 点当前那一颗 = 取消评分，所以不用再单放一个「清掉评分」 */
+              onClick={() =>
+                void patchCapture(selected, {
+                  rating: selected.rating === n ? 0 : n,
+                })
+              }
+            >
+              {selected.rating >= n ? "★" : "☆"}
+            </button>
+          ))}
+
+          <button
+            type="button"
+            className="board-bar-btn"
+            onClick={() => startEdit(selected)}
+          >
+            编辑
+          </button>
+
+          <button
+            type="button"
+            className="board-bar-btn board-bar-btn-danger"
+            onClick={() => setPendingDelete(selected)}
+          >
+            删除
+          </button>
+
+          <button
+            type="button"
+            className="board-bar-btn"
+            onClick={() => setSelectedId(null)}
+            title="放回去（Esc）"
+          >
+            放回去
+          </button>
+        </div>
+      ) : null}
 
       <Modal
         open={showForm}
-        title={editingId ? "编辑记录" : "新建记录"}
-        subtitle="「内容总结」用自己的话写，「笔记思考」写它跟你的具体问题有什么关系。"
+        title={editingId ? "改这张便签" : "钉一张便签"}
+        subtitle="「内容总结」用自己的话写；「笔记思考」写它跟你手上的哪个具体问题有关。"
         onClose={closeForm}
-        width={720}
+        width={680}
         footer={
           <>
-            <div className="spacer" />
-            <button className="btn" onClick={closeForm} disabled={saving}>
+            <span className="modal-hint">
+              {hasBody ? "可以保存" : "还差正文"}
+            </span>
+            <span className="spacer" />
+            <button
+              type="button"
+              className="btn"
+              onClick={closeForm}
+              disabled={saving}
+            >
               取消
             </button>
-            <button className="btn btn-primary" onClick={save} disabled={saving}>
-              <IconSave width={14} height={14} />
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void save()}
+              disabled={saving}
+            >
               {saving ? "保存中…" : "保存"}
             </button>
           </>
         }
       >
         {formError ? (
-          <div className="notice notice-error" style={{ marginBottom: 12 }}>
+          <div className="notice notice-error" style={{ marginBottom: 16 }}>
             {formError}
           </div>
         ) : null}
 
-        <div className="grid grid-3">
+        {/* 印刷品的填表方式：一条下划线，没有描边输入框 */}
+        <div className="note-form">
+          <div className="field">
+            <label htmlFor="cap-title">标题</label>
+            <input
+              id="cap-title"
+              className="form-input"
+              value={form.title}
+              maxLength={200}
+              placeholder="书名 / 文章标题 / 一句话把这个念头说完"
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+            />
+            <div className="hint">200 字以内。写不下就换个更短的说法。</div>
+          </div>
+
           <div className="field">
             <label>类型</label>
-            <select
-              className="select"
-              value={form.kind}
-              onChange={(e) =>
-                setForm({ ...form, kind: e.target.value as CaptureKind })
-              }
-            >
+            <div className="form-choice">
               {CAPTURE_KINDS.map((kind) => (
-                <option key={kind.id} value={kind.id}>
+                <button
+                  key={kind.id}
+                  type="button"
+                  className="form-choice-chip"
+                  data-on={form.kind === kind.id}
+                  title={kind.blurb}
+                  onClick={() => setForm({ ...form, kind: kind.id })}
+                >
                   {kind.name}
-                </option>
+                </button>
               ))}
-            </select>
+            </div>
           </div>
+
           <div className="field">
             <label>状态</label>
-            <select
-              className="select"
-              value={form.status}
-              onChange={(e) =>
-                setForm({ ...form, status: e.target.value as Capture["status"] })
-              }
-            >
-              <option value="inbox">待处理</option>
-              <option value="doing">进行中</option>
-              <option value="done">已完成</option>
-            </select>
+            <div className="form-choice">
+              {STATUSES.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  className="form-choice-chip"
+                  data-on={form.status === status}
+                  onClick={() => setForm({ ...form, status })}
+                >
+                  {STATUS_TEXT[status]}
+                </button>
+              ))}
+            </div>
           </div>
+
           <div className="field">
             <label>评分</label>
-            <select
-              className="select"
-              value={form.rating}
-              onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })}
-            >
-              <option value={0}>未评分</option>
+            <div className="form-choice form-choice-stars">
               {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n} value={n}>
-                  {"★".repeat(n)}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="field">
-          <label>标题</label>
-          <input
-            className="input"
-            value={form.title}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
-            placeholder="书名 / 文章标题 / 一句话概括这个想法"
-          />
-        </div>
-
-        <div className="grid grid-2">
-          <div className="field">
-            <label>作者</label>
-            <input
-              className="input"
-              value={form.author}
-              onChange={(e) => setForm({ ...form, author: e.target.value })}
-              placeholder="选填"
-            />
-          </div>
-          <div className="field">
-            <label>来源</label>
-            <input
-              className="input"
-              value={form.source}
-              onChange={(e) => setForm({ ...form, source: e.target.value })}
-              placeholder="链接 / 出版社 / 出处"
-            />
-          </div>
-        </div>
-
-        <div className="field">
-          <label>内容总结</label>
-          <textarea
-            className="textarea"
-            value={form.summary}
-            onChange={(e) => setForm({ ...form, summary: e.target.value })}
-            placeholder="用自己的话概括：它到底在说什么、论证链条是什么"
-          />
-        </div>
-
-        <div className="field">
-          <label>关键要点</label>
-          <textarea
-            className="textarea"
-            value={form.keyPoints}
-            onChange={(e) => setForm({ ...form, keyPoints: e.target.value })}
-            placeholder="一行一条，便于之后直接抽成方法论卡片"
-          />
-          <div className="hint">一行一条</div>
-        </div>
-
-        <div className="field">
-          <label>笔记思考</label>
-          <textarea
-            className="textarea"
-            value={form.thoughts}
-            onChange={(e) => setForm({ ...form, thoughts: e.target.value })}
-            placeholder="我从中想到了什么？它能解释我遇到的哪个具体问题？"
-          />
-        </div>
-
-        <div className="field">
-          <label>标签</label>
-          <input
-            className="input"
-            value={form.tags}
-            onChange={(e) => setForm({ ...form, tags: e.target.value })}
-            placeholder="用逗号分隔，例如：留存, 定价"
-          />
-        </div>
-
-        <div className="field">
-          <label>关联领域</label>
-          <div className="row" style={{ gap: 6 }}>
-            {DOMAINS.map((domain) => {
-              const on = form.domains.includes(domain);
-              return (
                 <button
-                  key={domain}
+                  key={n}
                   type="button"
-                  className={`tag${on ? " tag-brand" : ""}`}
-                  style={{ cursor: "pointer" }}
-                  onClick={() =>
-                    setForm({
-                      ...form,
-                      domains: on
-                        ? form.domains.filter((d) => d !== domain)
-                        : [...form.domains, domain],
-                    })
-                  }
+                  className="form-choice-chip"
+                  aria-label={`评 ${n} 星`}
+                  title={`评 ${n} 星`}
+                  onClick={() => setForm({ ...form, rating: n })}
                 >
-                  {domain}
+                  {form.rating >= n ? <b>★</b> : "☆"}
                 </button>
-              );
-            })}
+              ))}
+              <button
+                type="button"
+                className="form-choice-chip"
+                data-on={form.rating === 0}
+                onClick={() => setForm({ ...form, rating: 0 })}
+              >
+                未评分
+              </button>
+            </div>
+          </div>
+
+          <div className="field">
+            <label htmlFor="cap-summary">内容总结</label>
+            <textarea
+              id="cap-summary"
+              className="form-textarea"
+              value={form.summary}
+              placeholder="用自己的话概括：它到底在说什么，论证是怎么走的"
+              onChange={(e) => setForm({ ...form, summary: e.target.value })}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="cap-points">关键要点</label>
+            <textarea
+              id="cap-points"
+              className="form-textarea"
+              value={form.keyPoints}
+              placeholder={"一行一条\n例：参照点决定你此刻站在收益还是损失的框架里"}
+              onChange={(e) => setForm({ ...form, keyPoints: e.target.value })}
+            />
+            <div className="hint">一行一条，之后可以直接抽成方法论词条。</div>
+          </div>
+
+          <div className="field">
+            <label htmlFor="cap-thoughts">笔记思考</label>
+            <textarea
+              id="cap-thoughts"
+              className="form-textarea"
+              value={form.thoughts}
+              placeholder="我从中想到了什么？它能解释我遇到的哪个具体问题？"
+              onChange={(e) => setForm({ ...form, thoughts: e.target.value })}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="cap-tags">标签</label>
+            <input
+              id="cap-tags"
+              className="form-input"
+              value={form.tags}
+              placeholder="逗号分隔，例如：定价，决策，留存"
+              onChange={(e) => setForm({ ...form, tags: e.target.value })}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="cap-author">作者</label>
+            <input
+              id="cap-author"
+              className="form-input"
+              value={form.author}
+              placeholder="选填"
+              onChange={(e) => setForm({ ...form, author: e.target.value })}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="cap-source">来源</label>
+            <input
+              id="cap-source"
+              className="form-input"
+              value={form.source}
+              placeholder="链接 / 出版社 / 第几章"
+              onChange={(e) => setForm({ ...form, source: e.target.value })}
+            />
+          </div>
+
+          <div className="field">
+            <label>关联领域</label>
+            <div className="form-choice">
+              {DOMAINS.map((domain) => {
+                const on = form.domains.includes(domain);
+                return (
+                  <button
+                    key={domain}
+                    type="button"
+                    className="form-choice-chip"
+                    data-on={on}
+                    aria-pressed={on}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        domains: on
+                          ? form.domains.filter((d) => d !== domain)
+                          : [...form.domains, domain],
+                      })
+                    }
+                  >
+                    {domain}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="hint">选填。挂上领域，之后才好和方法论库对上。</div>
           </div>
         </div>
       </Modal>
 
-      <div className="folder-pane">
-        {loading ? (
-          <div className="loading">加载中…</div>
-        ) : filtered.length === 0 ? (
-          <div className="empty">
-            {items.length === 0
-              ? "还没有记录。点右上角「新建记录」开始，读书笔记、文章总结、随手想法都可以。"
-              : "没有匹配的记录。"}
-          </div>
-        ) : (
-          <div className="stack" style={{ gap: 10 }}>
-            {filtered.map((capture) => (
-            <div key={capture.id} className="card card-tight">
-              <div className="row" style={{ marginBottom: 6 }}>
-                <span className="tag">{captureKindName(capture.kind)}</span>
-                {capture.rating > 0 ? (
-                  <span className="tag tag-warn">{"★".repeat(capture.rating)}</span>
-                ) : null}
-                {capture.status === "done" ? (
-                  <span className="tag tag-good">已完成</span>
-                ) : capture.status === "doing" ? (
-                  <span className="tag">进行中</span>
-                ) : null}
-                <div className="spacer" />
-                <span className="list-sub">{formatDate(capture.createdAt)}</span>
-              </div>
-
-              <div className="list-title">{capture.title}</div>
-              {capture.author || capture.source ? (
-                <div className="list-sub" style={{ marginBottom: 6 }}>
-                  {[capture.author, capture.source].filter(Boolean).join(" · ")}
-                </div>
-              ) : null}
-
-              {capture.summary ? (
-                <p className="clamp-3" style={{ margin: "8px 0 6px" }}>
-                  {capture.summary}
-                </p>
-              ) : null}
-
-              {capture.keyPoints.length > 0 ? (
-                <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
-                  {capture.keyPoints.slice(0, 3).map((point, index) => (
-                    <li key={index} className="list-sub">
-                      {point}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-
-              {capture.thoughts ? (
-                <div
-                  className="notice"
-                  style={{ marginTop: 8, whiteSpace: "pre-wrap" }}
-                >
-                  {capture.thoughts}
-                </div>
-              ) : null}
-
-              {capture.tags.length > 0 || capture.domains.length > 0 ? (
-                <div className="row" style={{ marginTop: 9, gap: 6 }}>
-                  {capture.tags.map((tag) => (
-                    <span key={tag} className="tag">
-                      #{tag}
-                    </span>
-                  ))}
-                  {capture.domains.map((domain) => (
-                    <span key={domain} className="tag tag-brand">
-                      {domain}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="card-actions">
-                <Link
-                  href={`/capture/${capture.id}`}
-                  className="btn btn-sm btn-ghost card-open"
-                >
-                  查看详情
-                  <IconArrowRight width={13} height={13} />
-                </Link>
-                <div className="spacer" />
-                <button
-                  className="btn btn-sm"
-                  onClick={() => startEdit(capture)}
-                  title="编辑"
-                >
-                  <IconEdit width={13} height={13} />
-                  编辑
-                </button>
-                <button
-                  className="btn btn-sm btn-danger"
-                  onClick={() => setPendingDelete(capture)}
-                  title="删除"
-                >
-                  <IconTrash width={13} height={13} />
-                  删除
-                </button>
-              </div>
-            </div>
-          ))}
-          </div>
-        )}
-      </div>
-
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="删除记录"
-        message={`确定删除「${pendingDelete?.title ?? ""}」？删除后无法恢复。`}
+        title="撕掉这张便签"
+        message={`确定删掉「${pendingDelete?.title ?? ""}」？删了就找不回来了。`}
         busy={deleting}
         onConfirm={destroy}
         onCancel={() => setPendingDelete(null)}
@@ -547,5 +869,3 @@ function CapturePageInner() {
     </div>
   );
 }
-
-/** 记录详情抽屉：完整展示总结、要点与笔记思考，列表里只留摘要。 */

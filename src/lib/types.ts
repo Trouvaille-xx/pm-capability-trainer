@@ -265,3 +265,71 @@ export interface PromptTemplate {
   createdAt: string;
   updatedAt: string;
 }
+
+/* ------------------------------------------------------------------ *
+ * 模块五：题库
+ *
+ * 面试真题 / 别人的提问 / 自己想的问题。核心不是「记录」，
+ * 而是「先自己答一遍，再看 AI 怎么答，然后比差在哪」。
+ * 所以我的回答和 AI 回答是两个平级的主角，其余三块是配角。
+ * ------------------------------------------------------------------ */
+
+export type QuestionKind = "interview" | "thinking" | "other";
+
+export type QuestionStatus = "open" | "answered" | "archived";
+
+/** 「相关知识」里的一条。 */
+export interface RelatedConcept {
+  /** 概念名，通常能在方法论库里找到同名卡片 */
+  term: string;
+  /** 一句话解释：它跟这道题的关系 */
+  gloss: string;
+  /** 关联到的方法论卡片 id（AI 归类时自动匹配，可能为空） */
+  cardId?: ID;
+}
+
+/** 「推荐阅读」里的一条。 */
+export interface ReadingItem {
+  title: string;
+  /** 来源：站点、书名、作者 */
+  source: string;
+  url: string;
+  /** 为什么推荐它 —— 把搜索结果变成「针对这道题的建议」 */
+  why: string;
+}
+
+export interface Question {
+  id: ID;
+  /** 题目本身 */
+  prompt: string;
+  /** 分类。默认由 AI 归类，也可手动改 */
+  kind: QuestionKind;
+  status: QuestionStatus;
+  /** 出处：公司名 / 面试官 / 「自己想的」 */
+  source: string;
+  /** AI 归类出的领域，取自 catalog 的 DOMAINS */
+  domains: string[];
+  tags: string[];
+
+  /** 块二：我的回答 */
+  myAnswer: string;
+  myAnsweredAt: string;
+
+  /** 块三：AI 回答 */
+  aiAnswer: string;
+  aiAnsweredAt: string;
+  /** AI 回答是否正在生成 —— 跨刷新保留，避免关掉页面丢掉进度 */
+  aiGenerating?: boolean;
+
+  /** 块四：相关知识 */
+  related: RelatedConcept[];
+
+  /** 块五：推荐阅读 */
+  readings: ReadingItem[];
+
+  /** AI 归类/生成失败时的原因，用来在页面上如实说明 */
+  lastError?: string;
+
+  createdAt: string;
+  updatedAt: string;
+}
