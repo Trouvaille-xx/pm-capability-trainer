@@ -9,9 +9,9 @@
  * - 开关是方的、无色的，靠位置和填充表达开 / 关
  * - 状态是方括号里的文字（[正常] / [空]），不用彩色圆点
  *
- * 安全：GET /api/settings 会连明文 apiKey 一起返回。它只许出现在
- * type="password" 的输入框里，不进日志、不进注释、不进任何提示文案。
- * 页面上的「已配置 / 未配置」只报告有没有值。
+ * 安全：GET /api/settings **不回传任何密钥明文**，只回「配没配」的布尔量
+ * （apiKeySet / hasKey / hasToken）。所以密钥输入框平时是空的、只显示占位提示：
+ * 不填 = 不改动原值，只有点「清除」才会真的清掉。密钥因此永远不出服务端。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -21,8 +21,8 @@ import { apiGet, apiSend } from "@/lib/client";
 import { ConfirmDialog } from "@/components/Modal";
 import { PROVIDER_LABELS } from "@/lib/websearch";
 import type {
-  AISettings,
-  MCPServer,
+  PublicAISettings,
+  PublicMCPServer,
   PromptScope,
   PromptTemplate,
   WebSearchProvider,
@@ -48,20 +48,19 @@ function mcpUrlIssue(value: string): string {
     : "MCP 地址需要以 http:// 或 https:// 开头";
 }
 
-/** 表单里所有控件都存字符串：数字用字符串才能中途为空。 */
+/** 表单里所有控件都存字符串：数字用字符串才能中途为空。
+ *  密钥不在这里——服务端不回传密钥，它由 secretDrafts 单独管（见下）。 */
 interface AIForm {
   baseURL: string;
-  apiKey: string;
   model: string;
   temperature: string;
   maxTokens: string;
   companyName: string;
 }
 
-function toForm(settings: AISettings): AIForm {
+function toForm(settings: PublicAISettings): AIForm {
   return {
     baseURL: settings.baseURL,
-    apiKey: settings.apiKey,
     model: settings.model,
     temperature: String(settings.temperature),
     maxTokens: String(settings.maxTokens),
@@ -146,7 +145,7 @@ const SECTIONS: { id: string; name: string }[] = [
 export default function SettingsPage() {
   /* ---------------- 设置 ---------------- */
 
-  const [settings, setSettings] = useState<AISettings | null>(null);
+  const [settings, setSettings] = useState<PublicAISettings | null>(null);
   const [form, setForm] = useState<AIForm | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -154,6 +153,29 @@ export default function SettingsPage() {
   const [failed, setFailed] = useState(false);
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
+
+  /**
+   * 密钥草稿。服务端不回传明文密钥，所以输入框平时是空的、只显示占位提示。
+   *
+   * 约定：**没这个 key = 不改动原值**；值为空串 = 清除（只有「清除」按钮会这样写）。
+   * 这样「把输入框删空」只会退回「不改动」，不会误清密钥。
+   */
+  const [secretDrafts, setSecretDrafts] = useState<Record<string, string>>({});
+
+  function setSecretDraft(key: string, value: string) {
+    setSecretDrafts((prev) => {
+      const next = { ...prev };
+      if (value === "") delete next[key];
+      else next[key] = value;
+      return next;
+    });
+    setDirty(true);
+  }
+
+  function clearSecretDraft(key: string) {
+    setSecretDrafts((prev) => ({ ...prev, [key]: "" }));
+    setDirty(true);
+  }
 
   /* ---------------- 提示词 ---------------- */
 
@@ -182,11 +204,12 @@ export default function SettingsPage() {
   const load = useCallback(async () => {
     try {
       const [ai, list] = await Promise.all([
-        apiGet<AISettings>("/api/settings"),
+        apiGet<PublicAISettings>("/api/settings"),
         apiGet<PromptTemplate[]>("/api/prompts"),
       ]);
       setSettings(ai);
       setForm(toForm(ai));
+      setSecretDrafts({});
       shipped.current = {
         temperature: ai.temperature,
         maxTokens: ai.maxTokens,
@@ -290,7 +313,7 @@ export default function SettingsPage() {
   }
 
   /** 改一个不落盘的字段（联网搜索 / MCP），等按保存才写。 */
-  function patchSettings(patch: Partial<AISettings>) {
+  function patchSettings(patch: Partial<PublicAISettings>) {
     setSettings((prev) => (prev ? { ...prev, ...patch } : prev));
     setDirty(true);
     setFeedback("");
@@ -300,10 +323,11 @@ export default function SettingsPage() {
   /**
    * 保存。
    *
-   * 注意服务端 writeSettings 只在顶层做深合并：webSearch 是个整体，
-   * 只发半个子对象的话，缺的字段会被默认值顶掉（apiKey 会直接清空）。
-   * 所以这里一次 PUT 发完整内容，包括 webSearch 的四个字段和完整 mcpServers。
-   * apiKey 从表单原样带回 —— 必须带，否则会把已存的密钥抹掉。
+   * 服务端对顶层字段做深合并，对 webSearch 是整体替换，所以除了密钥，
+   * 其余字段要一次发全。
+   *
+   * 密钥采取「三态」：请求体里**不出现** = 保持原值，出现空串 = 清除，
+   * 出现值 = 更新。所以这里只把用户真的动过的那几个放进请求体。
    */
   async function saveSettings() {
     if (!settings || !form) return;
@@ -317,9 +341,12 @@ export default function SettingsPage() {
     setFeedback("");
     setFailed(false);
     try {
-      const next = await apiSend<AISettings>("/api/settings", "PUT", {
+      const keyDraft = secretDrafts.apiKey;
+      const searchDraft = secretDrafts.webSearch;
+
+      const next = await apiSend<PublicAISettings>("/api/settings", "PUT", {
         baseURL: form.baseURL.trim(),
-        apiKey: form.apiKey,
+        ...(keyDraft !== undefined ? { apiKey: keyDraft } : {}),
         model: form.model.trim(),
         temperature: Number(form.temperature),
         maxTokens: Math.round(Number(form.maxTokens)),
@@ -327,16 +354,20 @@ export default function SettingsPage() {
         webSearch: {
           enabled: settings.webSearch.enabled,
           provider: settings.webSearch.provider,
-          apiKey: settings.webSearch.apiKey,
           maxResults: settings.webSearch.maxResults,
+          ...(searchDraft !== undefined ? { apiKey: searchDraft } : {}),
         },
-        mcpServers: settings.mcpServers,
+        mcpServers: settings.mcpServers.map((server) => {
+          const draft = secretDrafts[`mcp:${server.id}`];
+          return draft !== undefined ? { ...server, token: draft } : server;
+        }),
       });
 
       // 服务端会把 baseURL 末尾的斜杠去掉、公司名截到 60 字，
       // 回填真实值，免得界面上显示的和存的不一样。
       setSettings(next);
       setForm(toForm(next));
+      setSecretDrafts({});
       shipped.current = {
         temperature: next.temperature,
         maxTokens: next.maxTokens,
@@ -356,6 +387,7 @@ export default function SettingsPage() {
   function discardChanges() {
     if (!settings) return;
     setForm(toForm(settings));
+    setSecretDrafts({});
     setDirty(false);
     setFeedback("");
     setFailed(false);
@@ -382,7 +414,7 @@ export default function SettingsPage() {
 
   /* ---- 联网搜索 ---- */
 
-  function patchWebSearch(patch: Partial<AISettings["webSearch"]>) {
+  function patchWebSearch(patch: Partial<PublicAISettings["webSearch"]>) {
     if (!settings) return;
     patchSettings({ webSearch: { ...settings.webSearch, ...patch } });
   }
@@ -391,17 +423,17 @@ export default function SettingsPage() {
 
   function addServer() {
     if (!settings) return;
-    const server: MCPServer = {
+    const server: PublicMCPServer = {
       id: `mcp_${Math.random().toString(36).slice(2, 9)}`,
       name: "",
       url: "",
-      token: "",
       enabled: true,
+      hasToken: false,
     };
     patchSettings({ mcpServers: [...settings.mcpServers, server] });
   }
 
-  function updateServer(id: string, patch: Partial<MCPServer>) {
+  function updateServer(id: string, patch: Partial<PublicMCPServer>) {
     if (!settings) return;
     patchSettings({
       mcpServers: settings.mcpServers.map((s) =>
@@ -414,6 +446,12 @@ export default function SettingsPage() {
     if (!settings) return;
     patchSettings({
       mcpServers: settings.mcpServers.filter((s) => s.id !== id),
+    });
+    // 顺带丢掉这个服务还没保存的令牌草稿
+    setSecretDrafts((prev) => {
+      const next = { ...prev };
+      delete next[`mcp:${id}`];
+      return next;
     });
   }
 
@@ -655,21 +693,39 @@ export default function SettingsPage() {
             <span className="set-field-label">
               API Key{" "}
               <span className="set-status">
-                {form.apiKey ? "已配置" : "未配置"}
+                {secretDrafts.apiKey === ""
+                  ? "保存后清除"
+                  : settings?.apiKeySet
+                    ? "已配置"
+                    : "未配置"}
               </span>
             </span>
-            <input
-              id="set-key"
-              aria-label="API Key"
-              className="set-input set-input-key"
-              type="password"
-              autoComplete="new-password"
-              value={form.apiKey}
-              onChange={(event) => patchForm({ apiKey: event.target.value })}
-              placeholder="sk-…"
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <input
+                id="set-key"
+                aria-label="API Key"
+                className="set-input set-input-key"
+                type="password"
+                autoComplete="new-password"
+                value={secretDrafts.apiKey ?? ""}
+                onChange={(event) => setSecretDraft("apiKey", event.target.value)}
+                placeholder={
+                  settings?.apiKeySet ? "已配置 · 留空表示不修改" : "sk-…"
+                }
+              />
+              {settings?.apiKeySet && secretDrafts.apiKey === undefined ? (
+                <button
+                  type="button"
+                  className="go"
+                  onClick={() => clearSecretDraft("apiKey")}
+                >
+                  清除
+                </button>
+              ) : null}
+            </div>
             <div className="set-hint">
-              只保存在本机 data/settings.json，不会上传到任何地方，页面上也不再回显。
+              只保存在本机 data/settings.json，不会上传到任何地方。
+              出于安全不再回显明文：留空就是不改动，想清掉请点「清除」。
             </div>
           </div>
 
@@ -970,18 +1026,37 @@ export default function SettingsPage() {
               <span className="set-field-label">
                 搜索 API Key{" "}
                 <span className="set-status">
-                  {webSearch?.apiKey ? "已配置" : "未配置"}
+                  {secretDrafts.webSearch === ""
+                    ? "保存后清除"
+                    : webSearch?.hasKey
+                      ? "已配置"
+                      : "未配置"}
                 </span>
               </span>
-              <input
-                aria-label="搜索 API Key"
-                className="set-input set-input-key"
-                type="password"
-                autoComplete="new-password"
-                value={webSearch?.apiKey ?? ""}
-                onChange={(event) => patchWebSearch({ apiKey: event.target.value })}
-                placeholder="只保存在本机"
-              />
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <input
+                  aria-label="搜索 API Key"
+                  className="set-input set-input-key"
+                  type="password"
+                  autoComplete="new-password"
+                  value={secretDrafts.webSearch ?? ""}
+                  onChange={(event) =>
+                    setSecretDraft("webSearch", event.target.value)
+                  }
+                  placeholder={
+                    webSearch?.hasKey ? "已配置 · 留空表示不修改" : "只保存在本机"
+                  }
+                />
+                {webSearch?.hasKey && secretDrafts.webSearch === undefined ? (
+                  <button
+                    type="button"
+                    className="go"
+                    onClick={() => clearSecretDraft("webSearch")}
+                  >
+                    清除
+                  </button>
+                ) : null}
+              </div>
               <div className="set-hint">
                 换成不需要密钥的服务商（Bing 或 DuckDuckGo）时，这一项会被收起来。
               </div>
@@ -1017,7 +1092,7 @@ export default function SettingsPage() {
               {publishing ? "保存中…" : "保存"}
             </button>
             <span className="set-status">
-              {webSearchNeedsKey && !webSearch?.apiKey
+              {webSearchNeedsKey && !webSearch?.hasKey
                 ? "这个服务商需要密钥，没填就会搜索失败"
                 : "这一块和 AI 配置一起保存"}
             </span>
@@ -1083,20 +1158,40 @@ export default function SettingsPage() {
 
                   <div style={{ height: 18 }} />
 
-                  <input
-                    className="set-input set-input-key"
-                    type="password"
-                    autoComplete="new-password"
-                    value={server.token}
-                    aria-label={`第 ${index + 1} 个服务的访问令牌`}
-                    onChange={(event) =>
-                      updateServer(server.id, { token: event.target.value })
-                    }
-                    placeholder="访问令牌，可留空"
-                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <input
+                      className="set-input set-input-key"
+                      type="password"
+                      autoComplete="new-password"
+                      value={secretDrafts[`mcp:${server.id}`] ?? ""}
+                      aria-label={`第 ${index + 1} 个服务的访问令牌`}
+                      onChange={(event) =>
+                        setSecretDraft(`mcp:${server.id}`, event.target.value)
+                      }
+                      placeholder={
+                        server.hasToken
+                          ? "令牌已配置 · 留空表示不修改"
+                          : "访问令牌，可留空"
+                      }
+                    />
+                    {server.hasToken &&
+                    secretDrafts[`mcp:${server.id}`] === undefined ? (
+                      <button
+                        type="button"
+                        className="go"
+                        onClick={() => clearSecretDraft(`mcp:${server.id}`)}
+                      >
+                        清除
+                      </button>
+                    ) : null}
+                  </div>
                   <div className="set-hint">
                     作为 Authorization: Bearer 发送，留空则不带。
-                    {server.token ? " 已配置。" : ""}
+                    {secretDrafts[`mcp:${server.id}`] === ""
+                      ? " 保存后清除。"
+                      : server.hasToken
+                        ? " 已配置。"
+                        : ""}
                   </div>
 
                   <div className="set-switch-row">
@@ -1216,7 +1311,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <span className="set-status">
-              {form.apiKey ? "已配置" : "未配置"}
+              {settings?.apiKeySet ? "已配置" : "未配置"}
             </span>
           </div>
 

@@ -146,6 +146,8 @@ export default function CaptureDetailPage() {
         </div>
         <div className="page-actions">
           <div className="hint-actions" style={{ marginTop: 0 }}>
+            {/* 这条记录最自然的下一步：直接拿它当素材开一次训练 */}
+            <Link href={`/trainer/new?capture=${capture.id}`}>用它训练</Link>
             <Link href="/capture">回到便签墙</Link>
           </div>
         </div>

@@ -3,10 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { MODES, SCENARIOS, modeName, scenarioName, scenarioSteps } from "@/lib/catalog";
+import { SCENARIOS, scenarioName, scenarioSteps } from "@/lib/catalog";
 import { apiGet, formatDate } from "@/lib/client";
 import { plainSummary } from "@/lib/board";
-import type { AISettings, TrainingScenario, TrainingSession } from "@/lib/types";
+import type {
+  PublicAISettings,
+  TrainingScenario,
+  TrainingSession,
+} from "@/lib/types";
 
 /**
  * AI 训练师 —— 训练场次列表。
@@ -30,15 +34,18 @@ export default function TrainerPage() {
   const [aiReady, setAiReady] = useState<boolean | null>(null);
   const [scenario, setScenario] = useState<TrainingScenario | null>(null);
   const [view, setView] = useState<View>("all");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     try {
       const [list, settings] = await Promise.all([
+        /* 便签上的提要取自最后一轮回答，所以这里要完整对象，
+           不能用 ?view=list 的轻量投影（投影里没有 transcript）。 */
         apiGet<TrainingSession[]>("/api/sessions"),
-        apiGet<AISettings>("/api/settings"),
+        apiGet<PublicAISettings>("/api/settings"),
       ]);
       setSessions(list);
-      setAiReady(settings.apiKey.trim() !== "");
+      setAiReady(settings.apiKeySet);
       setError("");
     } catch (e) {
       /* apiGet 在非 2xx 时直接抛，这里把服务端的话原样端出来。 */
@@ -65,6 +72,23 @@ export default function TrainerPage() {
   if (view === "all") shown = [...ongoing, ...finished];
   else if (view === "completed") shown = finished;
   if (scenario) shown = shown.filter((s) => s.scenario === scenario);
+
+  /* 关键词过滤叠在筛选之上：题目、报告摘要、标签、改进项都能搜到，
+     翻旧账时不用一场场点开。 */
+  const keyword = query.trim().toLowerCase();
+  if (keyword !== "") {
+    shown = shown.filter((session) => {
+      const haystack = [
+        session.topic,
+        session.report?.summary ?? "",
+        ...(session.report?.tags ?? []),
+        ...(session.report?.improvements ?? []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }
 
   const counts = SCENARIOS.map((s) => ({
     id: s.id,
@@ -233,6 +257,16 @@ export default function TrainerPage() {
                     <span className="count">{item.count}</span>
                   </button>
                 ))}
+
+                {/* 关键词搜索：与上面的筛选是叠加关系，不互斥 */}
+                <input
+                  className="input"
+                  style={{ maxWidth: 220 }}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="搜题目、摘要或标签…"
+                  aria-label="搜索训练记录"
+                />
               </div>
             </div>
           </div>
@@ -242,12 +276,13 @@ export default function TrainerPage() {
               {shown.length === 0 ? (
                 <div className="empty-board">
                   <h3>这个条件下没有训练</h3>
-                  <p>换个筛选，或者新建一场。</p>
+                  <p>换个筛选或关键词，也可以直接新建一场。</p>
                   <div className="hint-actions">
                     <button
                       onClick={() => {
                         setView("all");
                         setScenario(null);
+                        setQuery("");
                       }}
                     >
                       看全部

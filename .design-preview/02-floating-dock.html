@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>02 · 浮岛 / Floating Dock</title>
+<style>
+/* ==========================================================================
+   方向 02：浮岛 · Floating Dock
+   --------------------------------------------------------------------------
+   设计读法：国际 SaaS 产品页气质（Stripe / Vercel / Raycast）。
+   导航：底部居中浮动 Dock（macOS 式的图标条），悬停放大，无左侧目录
+   动效：Dock 图标弹性放大 + 磁吸、卡片鼠标跟随光晕、数字滚动
+   底色：极浅冷白
+
+   核心决策：
+   1. 导航彻底离开"边缘"，变成屏幕底部居中的浮岛。屏幕所有边缘都是内容。
+   2. Dock 的放大是"磁吸式"的 —— 鼠标越近越大，这是 Raycast/macOS 的招牌交互。
+   3. 卡片悬停有跟随鼠标的径向光晕（spotlight），是"高级感"最便宜的做法。
+   4. 强调色用电光蓝紫 #4F46E5，克制使用。
+   ========================================================================== */
+
+:root{
+  --bg:#F7F8FA; --card:#FFFFFF; --ink:#0B0D12; --ink-2:#3D424D;
+  --ink-3:#6B7280; --ink-4:#9CA3AF; --rule:#E6E8EC; --rule-2:#F1F2F5;
+  --accent:#4F46E5; --accent-2:#4338CA; --accent-w:#EEF0FF;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;--s8:72px;
+  --font:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI","PingFang SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --spring:cubic-bezier(.34,1.56,.64,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--font);
+  font-size:14.5px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  padding-bottom:130px;overflow-x:hidden;
+}
+
+.wrap{max-width:1080px;margin:0 auto;padding:var(--s7) var(--s6) 0}
+
+/* ---------------------------------------------------------------- 页头 */
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s7)}
+.head-l{display:flex;align-items:center;gap:10px}
+.mark{width:26px;height:26px;border-radius:8px;background:var(--ink);display:grid;place-items:center}
+.mark svg{width:14px;height:14px;stroke:#fff}
+.head-t{font-size:14px;font-weight:640;letter-spacing:-.02em}
+.head-r{display:flex;gap:var(--s2)}
+.icon-btn{
+  width:32px;height:32px;border-radius:9px;border:1px solid var(--rule);
+  background:var(--card);display:grid;place-items:center;cursor:pointer;color:var(--ink-3);
+  transition:all .2s var(--ease);
+}
+.icon-btn:hover{border-color:#D5D8DF;color:var(--ink);transform:translateY(-1px);box-shadow:0 3px 10px -2px rgba(11,13,18,.1)}
+.icon-btn svg{width:15px;height:15px}
+
+/* ---------------------------------------------------------------- 首屏 */
+.hero{
+  position:relative;border-radius:24px;overflow:hidden;
+  background:linear-gradient(165deg,#FFFFFF 0%,#F4F5FF 46%,#EEF0FF 100%);
+  border:1px solid var(--rule);
+  padding:var(--s8) var(--s7);
+  opacity:0;transform:translateY(18px);animation:enter .9s var(--ease) .05s forwards;
+}
+@keyframes enter{to{opacity:1;transform:none}}
+/* 网格纹理：国际产品页的常见手法，增加"技术感"而不喧哗 */
+.hero::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(var(--rule) 1px,transparent 1px),linear-gradient(90deg,var(--rule) 1px,transparent 1px);
+  background-size:44px 44px;opacity:.42;
+  mask-image:radial-gradient(ellipse 90% 70% at 50% 0%,#000 20%,transparent 78%);
+  -webkit-mask-image:radial-gradient(ellipse 90% 70% at 50% 0%,#000 20%,transparent 78%);
+}
+.hero > *{position:relative}
+.pill{
+  display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:100px;
+  background:var(--card);border:1px solid var(--rule);font-size:12px;color:var(--ink-3);
+  margin-bottom:var(--s5);box-shadow:0 1px 2px rgba(11,13,18,.04);
+}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:#10B981;position:relative}
+.pill .dot::after{
+  content:"";position:absolute;inset:-3px;border-radius:50%;
+  border:1.5px solid rgba(16,185,129,.4);animation:ping 2s var(--ease) infinite;
+}
+@keyframes ping{0%{transform:scale(.7);opacity:1}80%,100%{transform:scale(1.5);opacity:0}}
+h1{
+  font-size:clamp(34px,4.6vw,54px);font-weight:720;line-height:1.08;
+  letter-spacing:-.038em;max-width:17ch;
+}
+h1 em{font-style:normal;background:linear-gradient(100deg,var(--accent),#8B5CF6);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-sub{margin-top:var(--s4);font-size:16px;color:var(--ink-2);max-width:48ch}
+.hero-act{margin-top:var(--s6);display:flex;gap:10px;flex-wrap:wrap}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:10px;
+  font-size:13.5px;font-weight:580;cursor:pointer;font-family:inherit;border:1px solid var(--rule);
+  background:var(--card);color:var(--ink-2);
+  transition:transform .2s var(--spring),box-shadow .2s var(--ease),background .2s var(--ease),border-color .2s var(--ease);
+}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 22px -6px rgba(11,13,18,.16);border-color:#D5D8DF}
+.btn:active{transform:translateY(0) scale(.98)}
+.btn svg{width:14px;height:14px}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-2);border-color:var(--accent-2);box-shadow:0 10px 26px -8px rgba(79,70,229,.6)}
+
+/* 首屏里的实时统计条 */
+.hero-stats{
+  margin-top:var(--s7);padding-top:var(--s5);border-top:1px solid rgba(11,13,18,.07);
+  display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s5);
+}
+.hs-n{font-size:27px;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1.1}
+.hs-n.dim{color:var(--ink-4)}
+.hs-l{font-size:12px;color:var(--ink-3);margin-top:3px}
+
+/* ---------------------------------------------------------------- spotlight 卡 */
+.spot{
+  position:relative;background:var(--card);border:1px solid var(--rule);border-radius:16px;
+  overflow:hidden;transition:transform .28s var(--ease),box-shadow .28s var(--ease),border-color .28s var(--ease);
+}
+.spot::before{
+  content:"";position:absolute;width:340px;height:340px;border-radius:50%;
+  background:radial-gradient(circle,rgba(79,70,229,.13) 0%,transparent 68%);
+  opacity:0;transition:opacity .3s var(--ease);pointer-events:none;
+  transform:translate(-50%,-50%);left:var(--mx,50%);top:var(--my,50%);
+}
+.spot:hover{border-color:#D5D8DF;box-shadow:0 12px 34px -14px rgba(11,13,18,.2);transform:translateY(-2px)}
+.spot:hover::before{opacity:1}
+
+.sec{margin-top:var(--s7)}
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s4)}
+.sec-t{font-size:12.5px;font-weight:640;color:var(--ink-3);letter-spacing:.01em}
+.sec-a{font-size:12.5px;color:var(--ink-4);text-decoration:none;transition:color .2s}
+.sec-a:hover{color:var(--accent)}
+
+/* 场景：三列卡片，但有 spotlight 和更实的层次 */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s3)}
+.scene{padding:var(--s5);text-decoration:none;color:inherit;display:block}
+.scene-ico{
+  width:36px;height:36px;border-radius:10px;background:var(--accent-w);
+  display:grid;place-items:center;margin-bottom:var(--s4);
+  transition:transform .3s var(--spring),background .3s var(--ease);
+}
+.scene:hover .scene-ico{transform:scale(1.08) rotate(-4deg);background:#E3E6FF}
+.scene-ico svg{width:17px;height:17px;stroke:var(--accent)}
+.scene-t{font-size:15px;font-weight:640;letter-spacing:-.018em;margin-bottom:4px}
+.scene-s{font-size:12.5px;color:var(--ink-3);line-height:1.6}
+.scene-foot{
+  margin-top:var(--s4);padding-top:var(--s3);border-top:1px solid var(--rule-2);
+  font-size:11.5px;color:var(--ink-4);display:flex;align-items:center;gap:6px;
+}
+.scene-foot svg{width:12px;height:12px;transition:transform .25s var(--ease)}
+.scene:hover .scene-foot svg{transform:translateX(3px)}
+.scene:hover .scene-foot{color:var(--accent)}
+
+/* 训练列表 */
+.list{display:grid;grid-template-columns:1.25fr 1fr;gap:var(--s3);align-items:start}
+.rec{padding:var(--s4) var(--s5);text-decoration:none;color:inherit;display:grid;grid-template-columns:1fr auto;gap:var(--s4);align-items:center}
+.rec + .rec{margin-top:var(--s3)}
+.rec-t{font-size:14.5px;font-weight:600;letter-spacing:-.012em}
+.rec-m{font-size:12px;color:var(--ink-4);margin-top:5px;display:flex;gap:var(--s3);align-items:center}
+.badge{
+  display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:100px;
+  background:var(--accent-w);color:var(--accent);font-size:11px;font-weight:600;
+}
+.badge .d{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.rec-when{font-size:11.5px;color:var(--ink-4);white-space:nowrap}
+.empty{
+  padding:var(--s6) var(--s5);text-align:center;color:var(--ink-4);font-size:13px;
+  line-height:1.9;border-style:dashed;
+}
+.empty b{display:block;color:var(--ink-3);font-weight:600;margin-bottom:3px}
+
+/* ---------------------------------------------------------------- 浮动 Dock */
+.dock-wrap{
+  position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;
+  opacity:0;animation:enter .8s var(--ease) .35s forwards;
+}
+.dock{
+  display:flex;align-items:flex-end;gap:6px;padding:9px 11px;
+  background:rgba(255,255,255,.78);
+  backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
+  border:1px solid rgba(11,13,18,.08);border-radius:20px;
+  box-shadow:0 12px 40px -10px rgba(11,13,18,.22),0 2px 8px -2px rgba(11,13,18,.08);
+}
+.dock-item{
+  position:relative;width:42px;height:42px;border-radius:12px;
+  display:grid;place-items:center;cursor:pointer;text-decoration:none;
+  color:var(--ink-3);
+  transition:transform .22s var(--spring),background .2s var(--ease),color .2s var(--ease);
+  transform-origin:bottom center;
+}
+.dock-item svg{width:19px;height:19px}
+.dock-item:hover{background:rgba(11,13,18,.055);color:var(--ink)}
+.dock-item.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px -4px rgba(79,70,229,.5)}
+.dock-item.on:hover{background:var(--accent-2);color:#fff}
+/* 悬浮文字提示 */
+.dock-item .tip{
+  position:absolute;bottom:calc(100% + 12px);left:50%;transform:translateX(-50%) translateY(6px);
+  padding:4px 9px;border-radius:7px;background:var(--ink);color:#fff;
+  font-size:11.5px;white-space:nowrap;opacity:0;pointer-events:none;
+  transition:all .2s var(--ease);
+}
+.dock-item:hover .tip{opacity:1;transform:translateX(-50%) translateY(0)}
+.dock-sep{width:1px;height:26px;background:rgba(11,13,18,.1);margin:0 4px;align-self:center}
+
+/* 页面切换的进度提示（模拟） */
+.toast{
+  position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(10px);
+  padding:9px 16px;border-radius:11px;background:var(--ink);color:#fff;font-size:13px;
+  opacity:0;pointer-events:none;transition:all .28s var(--ease);z-index:70;
+  box-shadow:0 10px 30px -8px rgba(11,13,18,.4);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (max-width:900px){
+  .grid3{grid-template-columns:1fr}
+  .list{grid-template-columns:1fr}
+  .hero-stats{grid-template-columns:repeat(2,1fr);gap:var(--s4)}
+  .wrap{padding:var(--s6) var(--s4) 0}
+  .hero{padding:var(--s6) var(--s5)}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="head">
+    <div class="head-l">
+      <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16 10 8l4 5 6-8"/></svg></span>
+      <span class="head-t">能力训练平台</span>
+    </div>
+    <div class="head-r">
+      <button class="icon-btn" onclick="openSearch()" title="搜索">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+      <button class="icon-btn" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 13.6H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="pill"><span class="dot"></span>2 次训练进行中</div>
+    <h1>你的产品判断力，<br>应该<em>可以被度量</em>。</h1>
+    <p class="hero-sub">21 个知识点、2 场进行中的训练。这个工作台记录你每一次拆解、追问和修正。</p>
+    <div class="hero-act">
+      <button class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+        继续「拆解 Notion」
+      </button>
+      <button class="btn" onclick="toast('已创建新的训练草稿')">开始新的训练</button>
+    </div>
+
+    <div class="hero-stats">
+      <div><div class="hs-n dim" data-count="0">0</div><div class="hs-l">记录总结</div></div>
+      <div><div class="hs-n" data-count="21">0</div><div class="hs-l">知识点</div></div>
+      <div><div class="hs-n" data-count="2">0</div><div class="hs-l">训练场次</div></div>
+      <div><div class="hs-n dim">—</div><div class="hs-l">平均得分</div></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head">
+      <span class="sec-t">开始一次训练</span>
+      <a class="sec-a" href="#">查看全部场景 →</a>
+    </div>
+    <div class="grid3">
+      <a class="spot scene" href="#">
+        <span class="scene-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+        <div class="scene-t">产品拆解</div>
+        <div class="scene-s">拆一款产品的定位、结构、机制与商业化</div>
+        <div class="scene-foot">8 步流程 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+      </a>
+      <a class="spot scene" href="#">
+        <span class="scene-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
+        <div class="scene-t">需求调研</div>
+        <div class="scene-s">把一句模糊诉求，拆成可验证的假设与方案</div>
+        <div class="scene-foot">自由对话 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+      </a>
+      <a class="spot scene" href="#">
+        <span class="scene-ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><path d="M5 4v16"/><path d="M5 6h9l-1.2 3L14 12H5"/></svg></span>
+        <div class="scene-t">流程设计</div>
+        <div class="scene-s">端到端流程、角色分工、异常分支与指标</div>
+        <div class="scene-foot">自由对话 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></div>
+      </a>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-t">进行中</span></div>
+    <div class="list">
+      <div>
+        <a class="spot rec" href="#">
+          <span>
+            <div class="rec-t">拆解 Notion</div>
+            <div class="rec-m"><span class="badge"><span class="d"></span>第 1 步</span><span>产品拆解 · 5 轮</span></div>
+          </span>
+          <span class="rec-when">今天 00:55</span>
+        </a>
+        <a class="spot rec" href="#">
+          <span>
+            <div class="rec-t">给小米手机添加一个 AI 功能</div>
+            <div class="rec-m"><span class="badge"><span class="d"></span>进行中</span><span>需求调研 · 3 轮</span></div>
+          </span>
+          <span class="rec-when">今天 00:12</span>
+        </a>
+      </div>
+      <div class="spot empty">
+        <b>还没有记录总结</b>
+        读书、看文章、随手想到的都可以记在这里
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- 底部浮动 Dock -->
+<div class="dock-wrap">
+  <nav class="dock" id="dock">
+    <a class="dock-item on" href="#"><span class="tip">概览</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.7"/><rect x="14" y="3" width="7" height="7" rx="1.7"/><rect x="3" y="14" width="7" height="7" rx="1.7"/><rect x="14" y="14" width="7" height="7" rx="1.7"/></svg></a>
+    <a class="dock-item" href="#"><span class="tip">记录总结</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></a>
+    <a class="dock-item" href="#"><span class="tip">方法论</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg></a>
+    <a class="dock-item" href="#"><span class="tip">AI 训练师</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg></a>
+    <span class="dock-sep"></span>
+    <a class="dock-item" href="#"><span class="tip">搜索 ⌘K</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></a>
+    <a class="dock-item" href="#"><span class="tip">新建训练</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></a>
+  </nav>
+</div>
+
+<script>
+/* ---- 数字滚动 ---- */
+const io = new IntersectionObserver(es=>{
+  es.forEach(e=>{
+    if(!e.isIntersecting) return;
+    e.target.querySelectorAll("[data-count]").forEach(el=>{
+      const t = +el.dataset.count;
+      if(t===0){ el.textContent="0"; return; }
+      const t0=performance.now(), dur=850;
+      const tick=n=>{
+        const p=Math.min((n-t0)/dur,1), ez=1-Math.pow(1-p,3);
+        el.textContent=Math.round(t*ez);
+        if(p<1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    io.unobserve(e.target);
+  });
+},{threshold:.3});
+io.observe(document.querySelector(".hero"));
+
+/* ---- spotlight 跟随鼠标 ---- */
+document.querySelectorAll(".spot").forEach(el=>{
+  el.addEventListener("mousemove", e=>{
+    const r = el.getBoundingClientRect();
+    el.style.setProperty("--mx", (e.clientX-r.left)+"px");
+    el.style.setProperty("--my", (e.clientY-r.top)+"px");
+  });
+});
+
+/* ---- Dock 磁吸放大：越近越大，邻居也被带动 ---- */
+const items = [...document.querySelectorAll(".dock-item")];
+document.getElementById("dock").addEventListener("mousemove", e=>{
+  items.forEach(it=>{
+    const r = it.getBoundingClientRect();
+    const center = r.left + r.width/2;
+    const d = Math.abs(e.clientX - center);
+    const scale = Math.max(1, 1.42 - d/150);
+    it.style.transform = `scale(${Math.min(scale,1.42)}) translateY(${scale>1.1?-4:0}px)`;
+  });
+});
+document.getElementById("dock").addEventListener("mouseleave", ()=>{
+  items.forEach(it=>it.style.transform="");
+});
+
+/* ---- Dock 点击切换 ---- */
+items.forEach(it=>it.addEventListener("click", e=>{
+  if(it.querySelector(".tip") && !it.classList.contains("on")){
+    e.preventDefault();
+    items.forEach(x=>x.classList.remove("on"));
+    it.classList.add("on");
+    const label = it.querySelector(".tip").textContent;
+    if(!label.includes("搜索") && !label.includes("新建")) toast("切换到「"+label+"」");
+    else toast(label.includes("搜索") ? "搜索面板（演示）" : "新建训练（演示）");
+  }
+}));
+
+/* ---- Toast ---- */
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove("show"), 1900);
+}
+function openSearch(){ toast("搜索面板（演示）"); }
+
+/* ---- 键盘 1-4 快速切换 ---- */
+addEventListener("keydown", e=>{
+  if(e.target.tagName === "INPUT") return;
+  const n = parseInt(e.key, 10);
+  if(n>=1 && n<=4){
+    items.forEach((x,i)=>x.classList.toggle("on", i===n-1));
+    const t = items[n-1].querySelector(".tip").textContent;
+    toast("切换到「"+t+"」");
+  }
+});
+</script>
+</body>
+</html>

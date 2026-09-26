@@ -1,0 +1,640 @@
+/* ==========================================================================
+   线索板 · 共享样式
+   --------------------------------------------------------------------------
+   调性：一个人用的练功房。材料是纸 —— 便签、批注、页边。
+
+   字体：衬线做标题（书卷气）+ 无衬线做正文（屏幕可读）
+   配色：黑白灰 + 朱砂一个点缀色，一屏只用一次，只用于「你在这里」
+
+   纪律（这些是有意禁掉的默认写法）：
+   - 不用等宽字体做小标签（那是模板感的来源）
+   - 元信息不用「·」串起来
+   - 链接文字后面不加「→」
+   - 不做等大等圆角的卡片网格
+   ========================================================================== */
+
+:root{
+  /* 纸与板：板比纸深，纸才能读成「一张纸」 */
+  --paper:   #FFFFFF;
+  --paper-2: #FAF8F4;
+  --board:   #EFECE6;
+  --board-2: #E7E3DB;
+  --rail-bg: #E9E5DE;    /* 侧栏：一块比内容区略深的板 */
+
+  /* 墨：暖黑，不是蓝黑 */
+  --ink:   #14120F;
+  --ink-2: #56514A;
+  --ink-3: #8C857A;
+  --ink-4: #B5AEA2;
+
+  --rule:  #DAD4C9;      /* 属于板的线，不是属于字的线 */
+  --rule-2:#E9E5DE;
+
+  --mark:  #B33A2B;      /* 朱砂 */
+  --good:  #2F6B4A;
+  --warn:  #8A6D1F;
+
+  --serif: "Source Han Serif SC", "Songti SC", "SimSun",
+           "Iowan Old Style", "Palatino", Georgia, serif;
+  --sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+           "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+
+  --ease: cubic-bezier(.22,1,.36,1);
+  --spring: cubic-bezier(.34,1.4,.64,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  background:var(--board);color:var(--ink);
+  font-family:var(--sans);font-size:14.5px;line-height:1.8;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+/* 线索板的纹理：极淡的纸纤维 */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(circle at 1px 1px, rgba(17,17,17,.035) 1px, transparent 0);
+  background-size:19px 19px;
+}
+
+/* ============================================================
+   侧栏 · 折叠 / 展开
+   ------------------------------------------------------------
+   折叠 68px  —— 只有朱砂标记，零文字
+   展开 200px —— 完整标签
+
+   展开时内容区向右让位（不是浮层盖上去 —— 那会直接遮住便签）。
+   侧栏宽度和 body 左内边距用同一条 transition，两者同步移动，
+   所以看起来是「整页一起让开」，不是内容跳一下。
+   ============================================================ */
+:root{
+  --rail-w:68px;
+  --rail-w-open:200px;
+  --rail-dur:.34s;
+}
+body{
+  padding-left:var(--rail-w);
+  transition:padding-left var(--rail-dur) var(--spring);
+}
+body.rail-open{ padding-left:var(--rail-w-open) }
+
+.rail{
+  position:fixed;top:0;left:0;bottom:0;z-index:50;
+  width:var(--rail-w);
+  background:var(--rail-bg);
+  border-right:1px solid rgba(20,18,15,.11);
+  display:flex;flex-direction:column;
+  padding:14px 0 12px;
+  overflow:hidden;
+  transition:width var(--rail-dur) var(--spring);
+}
+.rail.open{ width:var(--rail-w-open) }
+/* 侧栏右缘：一条极淡的影，让它是「一块板」而不是「一层贴纸」 */
+.rail::after{
+  content:"";position:absolute;top:0;bottom:0;right:-16px;width:16px;
+  background:linear-gradient(90deg, rgba(20,18,15,.055), transparent);
+  pointer-events:none;
+}
+
+/* ---- 顶部：朱砂方块。它本身就是“当前页”的抽象 ---- */
+.rail-brand{
+  display:flex;align-items:center;gap:11px;
+  padding:0 0 14px;margin:0 18px 14px;
+  border-bottom:1px solid rgba(20,18,15,.09);
+  text-decoration:none;flex:none;
+}
+.rail-mark{
+  width:26px;height:26px;background:var(--mark);flex:none;
+  transition:transform .4s var(--spring);
+}
+.rail-brand:hover .rail-mark{transform:rotate(45deg)}
+.rail-name{
+  font-family:var(--serif);font-size:14px;color:var(--ink-2);
+  letter-spacing:.04em;white-space:nowrap;
+  opacity:0;transform:translateX(-6px);
+  transition:opacity .2s var(--ease), transform .3s var(--spring);
+}
+.rail.open .rail-name{opacity:1;transform:none}
+
+/* ---- 标签组 ---- */
+.rail-nav{display:flex;flex-direction:column;gap:7px;flex:none;padding:0 18px}
+.rail.open .rail-nav{padding:0 12px}
+
+/* 折叠态：一条短横线。当前页是朱砂方块。 */
+.rail-tab{
+  position:relative;
+  display:flex;align-items:center;gap:11px;
+  height:34px;
+  padding:0 6px;
+  text-decoration:none;cursor:pointer;
+  color:var(--ink-3);
+  font-family:var(--sans);font-size:13.5px;white-space:nowrap;
+  background:transparent;border:0;
+  transition:color .2s var(--ease), background .22s var(--ease);
+}
+/* 折叠时那个「卡边」标记 */
+.rail-tab::before{
+  content:"";flex:none;
+  width:22px;height:3px;background:var(--ink-4);
+  transition:all .3s var(--spring);
+}
+.rail-tab:hover{color:var(--ink)}
+.rail-tab:hover::before{background:var(--ink-2);width:28px}
+.rail-tab .lbl{
+  opacity:0;transform:translateX(-8px);
+  transition:opacity .2s var(--ease), transform .3s var(--spring);
+}
+.rail.open .rail-tab .lbl{opacity:1;transform:none}
+.rail-tab .cnt{
+  margin-left:auto;font-size:11.5px;color:var(--ink-4);
+  opacity:0;transition:opacity .2s var(--ease);
+}
+.rail.open .rail-tab .cnt{opacity:1}
+
+/* 当前页：朱砂方块 + 更长的黑线，文字变黑加粗 */
+.rail-tab.here{color:var(--ink);font-weight:600;background:var(--paper-2)}
+.rail-tab.here::before{
+  width:22px;height:12px;background:var(--mark);
+  border-radius:1px;
+}
+.rail.open .rail-tab.here::before{width:14px;height:14px;border-radius:0}
+
+/* ---- 底部 ---- */
+.rail-foot{
+  margin-top:auto;display:flex;flex-direction:column;gap:7px;
+  padding:14px 18px 0;border-top:1px solid rgba(20,18,15,.09);flex:none;
+}
+.rail.open .rail-foot{padding:14px 12px 0}
+.rail-btn{
+  display:flex;align-items:center;gap:11px;
+  height:34px;padding:0 6px;
+  background:none;border:0;cursor:pointer;
+  color:var(--ink-3);font-family:var(--sans);font-size:13.5px;white-space:nowrap;
+  transition:color .2s var(--ease);
+}
+.rail-btn:hover{color:var(--ink)}
+.rail-btn svg{width:17px;height:17px;flex:none}
+.rail-btn .lbl{
+  opacity:0;transition:opacity .2s var(--ease);
+}
+.rail.open .rail-btn .lbl{opacity:1}
+/* 折叠按钮单独一点，让人找得到 */
+.rail-toggle{color:var(--ink-4)}
+.rail-toggle:hover{color:var(--ink)}
+
+/* ============================================================ 首部 */
+/* 首部要比便签墙高一层：便签是旋转的，外接矩形的下沿会探出网格，
+   否则会盖到筛选条上（曾经出现正文压在「全部」按钮上）。 */
+.masthead{max-width:1360px;margin:0 auto;padding:38px 40px 0;position:relative;z-index:3}
+.mast-top{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  gap:32px;flex-wrap:wrap;
+  padding-bottom:16px;border-bottom:2px solid var(--ink);
+}
+.mast-l h1{
+  font-family:var(--serif);font-size:38px;font-weight:600;
+  line-height:1.14;letter-spacing:.01em;
+}
+.mast-sub{
+  margin-top:8px;font-size:13px;color:var(--ink-3);
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+}
+.mast-sub .d{width:3px;height:3px;border-radius:50%;background:var(--ink-4)}
+.mast-sub .mk{color:var(--mark)}
+
+/* 视图切换：像书里的「索引 / 正文」两个入口 */
+.viewswitch{display:flex;align-items:center;gap:0;flex:none}
+.vs-btn{
+  background:none;border:1px solid transparent;font-family:inherit;font-size:13px;
+  cursor:pointer;color:var(--ink-3);padding:6px 14px;position:relative;transition:all .2s;
+}
+.vs-btn:hover{color:var(--ink-2)}
+.vs-btn.on{color:var(--ink);font-weight:600;border-color:var(--ink)}
+.vs-btn + .vs-btn{border-left:0}
+.vs-btn.on + .vs-btn{border-left:1px solid var(--ink)}
+
+/* 控制条：检索条和筛选用 flex-wrap 自动换行，不横向溢出 */
+.controls{display:flex;align-items:baseline;gap:14px 26px;flex-wrap:wrap;padding:16px 0 0}
+.lookup{
+  flex:1 1 260px;min-width:0;display:flex;align-items:baseline;gap:10px;
+  border-bottom:1px solid var(--ink);padding-bottom:7px;
+}
+.lookup input{
+  flex:1;min-width:0;border:0;outline:0;background:transparent;
+  font-family:var(--serif);font-size:18px;color:var(--ink);padding:0;
+}
+.lookup input::placeholder{color:var(--ink-4);font-style:italic}
+.lookup-hint{font-family:var(--sans);font-size:12px;color:var(--ink-4);white-space:nowrap;flex:none}
+/* 筛选：自己占满一行由 flex-wrap 决定，永远不挤出可视区 */
+.filters{
+  display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12.5px;
+  flex:0 1 auto;min-width:0;
+}
+.filters button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:12.5px;
+  color:var(--ink-3);cursor:pointer;position:relative;transition:color .18s;
+  white-space:nowrap;
+}
+.filters button:hover{color:var(--ink-2)}
+.filters button.on{color:var(--ink);font-weight:600}
+.filters button.on::after{
+  content:"";position:absolute;left:0;right:0;bottom:-4px;height:2px;background:var(--mark);
+}
+.filters .count{color:var(--ink-4);font-size:10.5px;margin-left:1px;font-weight:400}
+
+/* ============================================================ 便签主体
+   所有模块共用的便签：词条、摘录、题目、训练记录都长这样 */
+.board{
+  max-width:1360px;margin:0 auto;padding:44px 40px 90px;
+  position:relative;z-index:1;
+}
+/* 便签是旋转的：外接矩形比布局盒更宽（±15° 时约多出 25%）。
+   给墙加横向内边距，让最外圈的角有地方转，不顶出视口。
+   这不改变便签可见性 —— 只是把旋转余量算进版心。 */
+.wall{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(272px,1fr));
+  gap:34px 30px;align-items:start;
+  padding:0 16px;
+}
+/* 便签尺寸变体 */
+.wall.wide{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+.wall.narrow{grid-template-columns:repeat(auto-fill,minmax(232px,1fr))}
+
+.note{
+  position:relative;background:var(--paper);
+  padding:24px 22px 20px;
+  border:1px solid rgba(20,18,15,.09);
+  box-shadow:0 1px 2px rgba(20,18,15,.05), 0 10px 26px -14px rgba(20,18,15,.24);
+  cursor:pointer;
+  /* flex 列 + margin-top:auto 让「打开」贴底。
+     flex:none 在子元素上（见下）是关键：否则网格把便签拉伸到
+     整行最高时，每个子块都会被平均撑高 —— 曾经把 .note-domain 撑到 85px。 */
+  display:flex;flex-direction:column;
+  transform:rotate(var(--tilt,0deg));
+  transition:transform .34s var(--spring), box-shadow .34s var(--ease), border-color .34s var(--ease);
+  transform-origin:50% 12px;
+}
+.note:hover{
+  transform:rotate(0deg) translateY(-7px) scale(1.018);
+  box-shadow:0 3px 6px rgba(17,17,17,.07), 0 24px 50px -18px rgba(17,17,17,.3);
+  border-color:rgba(17,17,17,.16);
+  z-index:5;
+}
+.note:focus-visible{outline:1.5px solid var(--mark);outline-offset:4px}
+/* 便签的所有直接子块都不参与拉伸 —— 网格把便签撑高时，
+   只有 .note-foot 的 margin-top:auto 吸收多余空间 */
+.note > *{flex:none}
+.note > .note-foot{margin-top:auto}
+
+/* 图钉 */
+.pin{
+  position:absolute;top:-9px;left:50%;margin-left:-7px;
+  width:14px;height:14px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%, #fff 0%, #D8D4CC 42%, #A8A29A 100%);
+  box-shadow:0 2px 5px rgba(17,17,17,.4), inset 0 -1px 2px rgba(255,255,255,.5);
+  z-index:2;
+}
+.note.flagged .pin{
+  background:radial-gradient(circle at 34% 30%, #F4B0A4 0%, var(--mark) 48%, #8E2A1F 100%);
+  box-shadow:0 3px 9px rgba(192,57,43,.5), inset 0 -1px 2px rgba(255,255,255,.45);
+}
+/* 右上角折角 */
+.note::after{
+  content:"";position:absolute;top:0;right:0;width:20px;height:20px;
+  background:linear-gradient(225deg, var(--board) 48%, rgba(17,17,17,.055) 50%, transparent 52%);
+  border-bottom-left-radius:4px;
+}
+
+.note-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:11px;flex:none}
+/* 便签头行：类目 + 状态
+   状态不用「小圆点 + 文字」——那看起来就是「· 串联」。
+   改成：状态包在方括号里，像批注的旁注记号。 */
+.note-domain{
+  display:flex;align-items:baseline;gap:8px;
+  margin-bottom:10px;min-width:0;flex:none;
+}
+.note-domain > span:first-child{
+  font-size:12.5px;color:var(--ink-2);font-weight:600;
+  letter-spacing:.01em;flex:none;
+}
+.state-mark{
+  display:inline-flex;align-items:baseline;
+  font-size:11.5px;color:var(--ink-4);letter-spacing:.02em;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.state-mark:empty{display:none}
+/* 用方括号代替圆点：不会读成「·」 */
+.state-mark::before{content:"[";margin-right:1px}
+.state-mark::after{content:"]";margin-left:1px}
+.note-title{
+  font-family:var(--serif);font-size:22px;font-weight:600;
+  letter-spacing:.01em;line-height:1.3;
+}
+.note-def{font-size:15px;line-height:1.78;color:var(--ink);margin-bottom:11px;flex:none}
+/* 详情最多三行。
+   line-clamp 是硬裁：按行高整数倍算高度，所以必须同时锁 line-height，
+   否则窄容器下会出现「只露半行字」的截断。
+   min-height:0 是 flex 列里的必要修正（clamp 元素会按未裁剪高度撑开）。 */
+.note-detail{
+  font-size:13.5px;line-height:1.85;color:var(--ink-2);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  overflow:hidden;min-height:0;flex:none;
+  max-height:calc(1.85em * 3);
+}
+.note-foot{
+  position:relative;
+  margin-top:auto;padding-top:13px;
+  border-top:1px dashed rgba(20,18,15,.13);
+  display:flex;align-items:baseline;gap:14px;
+  font-size:11.5px;color:var(--ink-4);
+  flex:none;min-height:0;
+}
+/* 左半边（状态/来源）：可截断，不撑高 */
+.note-foot > span:first-child{
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 便签底部的状态文字：一律灰色。
+   朱砂只留给「你在这里」（侧栏当前页）和「与正在进行的训练相关」的图钉。
+   所以这里的 flag 不染色 —— 一屏出现六次强调色就是没有强调。 */
+.note-foot .flag{
+  color:var(--ink-3);
+  display:flex;align-items:center;gap:6px;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.note-foot .flag::before{
+  content:"";width:4px;height:4px;flex:none;
+  background:var(--ink-4);
+}
+.note-foot .flag.good{color:var(--ink-3)}
+.note-foot .flag.good::before{background:var(--good)}
+.note-foot .flag.warn{color:var(--ink-3)}
+.note-foot .flag.warn::before{background:var(--ink-4)}
+/* 「打开」不作为常驻文字 —— 旋转的便签上，几个「打开」永远对不齐。
+   改成悬停时在右下角浮现：静止时干净，动起来才说明可点。 */
+.note-foot .more{
+  position:absolute;
+  right:0;bottom:0;
+  font-size:11.5px;letter-spacing:.02em;
+  color:var(--mark);
+  opacity:0;transform:translateX(-4px);
+  transition:opacity .22s var(--ease), transform .26s var(--spring);
+  pointer-events:none;
+}
+.note:hover .note-foot .more,
+.note:focus-visible .note-foot .more{
+  opacity:1;transform:none;
+}
+/* 底部左侧那半个标记在悬停时也让位，避免和「打开」挤在一起 */
+.note-foot{position:relative}
+
+/* 便签里的标签（记录总结用） */
+.note-tags{margin-top:12px;display:flex;flex-wrap:wrap;gap:9px;font-size:11px}
+.note-tags span{color:var(--ink-3)}
+.note-tags span::before{content:"#";color:var(--ink-4)}
+
+/* 星级（记录总结用） */
+.stars{display:flex;gap:2px;font-size:11px;color:var(--ink-4);letter-spacing:1px}
+.stars b{color:var(--mark);font-weight:400}
+/* 星级只用一个朱砂，不是每颗星都红 */
+.stars b ~ b{color:var(--mark)}
+
+/* 便签里的清单（关键要点） */
+.note-points{
+  margin-top:11px;padding-left:0;list-style:none;
+  font-size:13px;line-height:1.8;color:var(--ink-2);
+}
+.note-points li{padding-left:14px;position:relative;margin-bottom:4px}
+.note-points li::before{
+  content:"";position:absolute;left:2px;top:11px;
+  width:4px;height:1px;background:var(--ink-4);
+}
+
+/* 便签里的大数字（训练记录用） */
+.note-score{
+  font-family:var(--serif);font-size:34px;font-weight:600;
+  line-height:1;letter-spacing:-.01em;margin-bottom:6px;
+}
+.note-score small{font-size:14px;color:var(--ink-4);font-weight:400;margin-left:3px}
+
+/* ============================================================ 空态
+   线索板上"没有便签"的样子：一块空的板，一句提示 */
+.empty-board{
+  grid-column:1/-1;
+  border:1px dashed rgba(17,17,17,.18);
+  padding:70px 40px;text-align:center;
+  color:var(--ink-3);
+}
+.empty-board h3{
+  font-family:var(--serif);font-size:19px;font-weight:600;
+  color:var(--ink-2);margin-bottom:8px;
+}
+.empty-board p{font-size:13.5px;line-height:1.9;color:var(--ink-3)}
+.empty-board .hint-actions{margin-top:20px;display:flex;gap:22px;justify-content:center;font-size:13px}
+.empty-board .hint-actions button{
+  background:none;border:0;font-family:inherit;font-size:13px;cursor:pointer;
+  color:var(--ink-3);border-bottom:1px solid transparent;transition:all .18s;padding:0;
+}
+.empty-board .hint-actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.empty-board .hint-actions button.go{color:var(--mark);font-weight:600}
+.empty-board .hint-actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* ============================================================ 详情页
+   点便签之后进入的地方。一次看一个，左右翻页。 */
+.reader{display:none;max-width:760px;margin:0 auto;padding:44px 40px 90px;position:relative;z-index:1}
+.reader.on{display:block}
+.backbar{display:none;margin-bottom:22px}
+.backbar button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:12.5px;
+  color:var(--ink-3);cursor:pointer;display:flex;align-items:center;gap:7px;
+  border-bottom:1px solid transparent;transition:all .18s;
+}
+.backbar button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.backbar svg{width:14px;height:14px}
+
+.reader-card{
+  background:var(--paper);border:1px solid rgba(17,17,17,.09);
+  box-shadow:0 2px 4px rgba(17,17,17,.05), 0 20px 50px -22px rgba(17,17,17,.28);
+  padding:52px 56px 44px;position:relative;
+  animation:pageIn .42s var(--ease);
+}
+@keyframes pageIn{from{opacity:0;transform:translateX(14px) rotate(.4deg)}to{opacity:1;transform:none}}
+.reader-card .pin{top:-9px}
+.reader-domain{
+  font-family:var(--sans);font-size:12px;color:var(--ink-3);
+  letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.reader-flag{color:var(--mark);font-weight:600}
+.reader-title{
+  font-family:var(--serif);font-size:40px;font-weight:600;
+  line-height:1.18;letter-spacing:.01em;margin-bottom:18px;
+}
+.reader-def{
+  font-size:18px;line-height:1.78;color:var(--ink);
+  padding-bottom:22px;border-bottom:1px solid var(--rule);margin-bottom:24px;
+}
+.reader-detail{font-size:15.5px;line-height:1.95;color:var(--ink-2)}
+.reader-sec{margin-top:30px;padding-top:24px;border-top:1px dashed var(--rule)}
+.reader-sec-label{
+  font-family:var(--sans);font-size:12px;color:var(--ink-4);
+  letter-spacing:.1em;margin-bottom:11px;display:block;
+}
+.reader-sec-body{font-size:15px;line-height:1.9;color:var(--ink-2)}
+.reader-example{
+  font-family:var(--serif);font-size:15px;font-style:italic;
+  color:var(--ink-3);line-height:1.9;
+}
+/* 详情里的对话（训练师用） */
+.turns{display:flex;flex-direction:column;gap:22px}
+.turn-role{
+  font-family:var(--sans);font-size:12px;color:var(--ink-4);
+  letter-spacing:.08em;margin-bottom:7px;
+}
+.turn-user .turn-body{
+  background:var(--board-2);padding:14px 17px;
+  font-size:14.5px;line-height:1.85;color:var(--ink);
+  border-left:2px solid var(--ink-4);
+}
+.turn-ai .turn-body{
+  padding-left:17px;border-left:2px solid var(--mark);
+  font-size:14.5px;line-height:1.9;color:var(--ink-2);
+}
+.turn-tools{margin-top:11px;display:flex;flex-direction:column;gap:5px}
+.turn-tool{
+  font-family:var(--sans);font-size:12px;color:var(--ink-3);
+  padding:5px 9px;background:var(--board-2);display:flex;gap:9px;
+}
+.turn-tool .st{color:var(--good)}
+
+.reader-actions{margin-top:34px;display:flex;gap:22px;font-size:13px;flex-wrap:wrap}
+.reader-actions button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:13px;
+  color:var(--ink-3);cursor:pointer;border-bottom:1px solid transparent;transition:all .18s;
+}
+.reader-actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.reader-actions button.go{color:var(--mark);font-weight:600}
+.reader-actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* 翻页控制 */
+.pager{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-top:26px;padding-top:20px;border-top:1px solid rgba(17,17,17,.1);
+}
+.pager-btn{
+  background:none;border:0;font-family:inherit;font-size:13px;color:var(--ink-3);
+  cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 0;transition:color .18s;
+}
+.pager-btn:hover:not(:disabled){color:var(--ink)}
+.pager-btn:disabled{color:var(--ink-4);cursor:not-allowed;opacity:.5}
+.pager-btn svg{width:14px;height:14px}
+.pager-mid{font-family:var(--sans);font-size:12px;color:var(--ink-4);display:flex;align-items:center;gap:14px}
+.dots{display:flex;gap:5px;flex-wrap:wrap;max-width:220px}
+.dots i{
+  width:5px;height:5px;border-radius:50%;background:var(--ink-4);
+  cursor:pointer;transition:all .22s var(--spring);
+}
+.dots i.on{background:var(--mark);transform:scale(1.5)}
+.dots i:hover{background:var(--ink-3)}
+
+/* ============================================================ 卷末 */
+.colophon{
+  max-width:1360px;margin:0 auto;padding:0 40px 60px;
+  display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;
+  font-size:11.5px;color:var(--ink-4);line-height:2;position:relative;z-index:1;
+}
+.colophon b{color:var(--ink-3);font-weight:600}
+.colophon .mk{color:var(--mark)}
+
+/* 键盘提示
+   固定在右下角，所以永远会压住滚到那里的内容。
+   改成默认隐藏，按 ? 才出现（退出也用 ? 或 Esc）。 */
+.hintbar{
+  position:fixed;right:30px;bottom:26px;z-index:30;
+  font-family:var(--sans);font-size:12px;color:var(--ink-3);
+  background:rgba(255,255,255,.96);backdrop-filter:blur(10px);
+  border:1px solid rgba(20,18,15,.12);padding:9px 14px;
+  display:flex;gap:16px;align-items:center;
+  box-shadow:0 8px 26px -14px rgba(20,18,15,.4);
+  opacity:0;visibility:hidden;transform:translateY(6px);
+  transition:opacity .2s var(--ease), transform .24s var(--spring), visibility .2s;
+  pointer-events:none;
+}
+.hintbar.show{opacity:1;visibility:visible;transform:none;pointer-events:auto}
+.hintbar kbd{
+  font-family:var(--sans);font-size:11.5px;background:var(--board-2);
+  border:1px solid rgba(20,18,15,.12);padding:1px 5px;color:var(--ink-2);
+}
+.hintbar .hint-label{color:var(--ink-4)}
+
+/* ============================================================ 表单
+   设置页用。没有圆角框，只有下划线 —— 印刷品的填表方式。 */
+.form{max-width:640px}
+.form-row{padding:22px 0;border-bottom:1px solid rgba(17,17,17,.08)}
+.form-row:last-child{border-bottom:0}
+.form-label{
+  font-family:var(--sans);font-size:12px;color:var(--ink-4);
+  letter-spacing:.1em;display:block;margin-bottom:9px;
+}
+.form-input,.form-textarea,.form-select{
+  width:100%;border:0;border-bottom:1px solid var(--rule);outline:0;
+  background:transparent;font-family:var(--sans);font-size:15px;
+  color:var(--ink);padding:6px 0;transition:border-color .2s;
+}
+.form-input:focus,.form-textarea:focus,.form-select:focus{border-bottom-color:var(--ink)}
+.form-textarea{resize:vertical;min-height:88px;line-height:1.8;font-size:14px}
+.form-hint{font-size:12px;color:var(--ink-4);margin-top:8px;line-height:1.7}
+.form-actions{margin-top:32px;display:flex;gap:22px;font-size:13px;align-items:center}
+.form-actions button{
+  background:none;border:0;font-family:inherit;font-size:13px;cursor:pointer;
+  color:var(--ink-3);border-bottom:1px solid transparent;transition:all .18s;padding:0;
+}
+.form-actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.form-actions button.go{color:var(--mark);font-weight:600}
+.form-actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* ============================================================ 提示条
+   操作后的反馈。朴素的深色小条，不用彩色。 */
+.toast{
+  position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(14px);
+  padding:10px 18px;background:var(--ink);color:#fff;font-size:12.5px;
+  opacity:0;pointer-events:none;transition:all .3s var(--spring);z-index:99;
+  display:flex;align-items:center;gap:9px;font-family:var(--sans);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast .mk{color:#F4B0A4}
+
+:focus-visible{outline:1.5px solid var(--mark);outline-offset:3px}
+::selection{background:rgba(192,57,43,.14)}
+
+@media (max-width:760px){
+  /* 手机上侧栏变成底部横条；展开态在手机上无意义，一律平铺 */
+  body{padding-left:0 !important;padding-bottom:62px}
+  .rail, .rail.open{
+    top:auto;right:0;bottom:0;left:0;width:auto;height:62px;
+    flex-direction:row;align-items:center;gap:0;
+    padding:0 10px;border-right:0;border-top:1px solid rgba(20,18,15,.11);
+    overflow-x:auto;
+  }
+  .rail::after{display:none}
+  .rail-brand{flex-direction:row;padding:0 12px 0 2px;margin:0;
+    border-bottom:0;border-right:1px solid rgba(20,18,15,.09)}
+  .rail-name{display:none}
+  .rail-mark{width:22px;height:22px}
+  .rail-nav{flex-direction:row;gap:3px;padding:0}
+  .rail-tab{height:auto;padding:8px 10px;gap:0;font-size:13px}
+  .rail-tab::before{display:none}
+  .rail-tab .lbl{opacity:1;transform:none}
+  .rail-tab .cnt{opacity:1;margin-left:6px}
+  .rail-foot{margin:0 0 0 auto;flex-direction:row;padding:0 0 0 8px;border-top:0}
+  .rail-btn{height:auto;padding:8px 9px}
+  .rail-btn .lbl{display:none}
+  .rail-toggle{display:none}
+
+  .masthead,.board,.reader,.colophon{padding-left:20px;padding-right:20px}
+  .wall,.wall.wide,.wall.narrow{grid-template-columns:1fr;gap:30px}
+  .reader-card{padding:34px 24px 30px}
+  .reader-title{font-size:29px}
+  .mast-l h1{font-size:29px}
+  .hintbar{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

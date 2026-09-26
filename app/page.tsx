@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { SCENARIOS, captureKindName, questionKindName, scenarioName } from "@/lib/catalog";
 import { apiGet, formatDate } from "@/lib/client";
 import { assignTilts, tiltStyle } from "@/lib/board";
+import { buildProfile, dimensionTrend } from "@/lib/profile";
+import { recommendNext, suggestionHref } from "@/lib/review";
 import { IconPlus } from "@/components/icons";
 import type {
   Capture,
@@ -78,12 +80,17 @@ export default function DashboardPage() {
   }, []);
 
   const scored = sessions.filter((s) => s.report);
-  const average = scored.length
-    ? Math.round(
-        scored.reduce((sum, s) => sum + (s.report?.overall ?? 0), 0) /
-          scored.length,
-      )
-    : null;
+
+  /* 能力画像：把历次报告的分项评分按维度聚合。
+     报告已按各场景的评分表对齐，这里再按满分归一一次——
+     产品拆解是 50 分制、其它场景是百分制，直接平均没有意义。 */
+  const profile = useMemo(() => buildProfile(sessions), [sessions]);
+
+  /* 下一步练什么：把最弱的维度映射回一次点得开的训练 */
+  const suggestions = useMemo(() => recommendNext(sessions), [sessions]);
+
+  /** 归一后的平均得分率（0-100），没有报告时为 null。 */
+  const average = profile.averagePercent;
 
   /** 正在进行的那一次。有它就先说它 —— 这是打开页面最想知道的。 */
   const active = sessions.find((s) => s.status === "active") ?? null;
@@ -225,10 +232,124 @@ export default function DashboardPage() {
         <div className="statline-item">
           <span className="statline-value">{average ?? "—"}</span>
           <span className="statline-label">
-            {scored.length ? `平均得分，${scored.length} 次已生成报告` : "平均得分，还没有报告"}
+            {scored.length
+              ? `平均得分率，${scored.length} 次已生成报告`
+              : "平均得分率，还没有报告"}
           </span>
         </div>
       </div>
+
+      {/* 能力画像：跨会话看维度趋势，这是单份报告给不了的 */}
+      {!loading && profile.scoredSessions > 0 ? (
+        <div>
+          <div className="section-label">
+            <span>能力画像</span>
+            <span className="section-note">
+              基于 {profile.scoredSessions} 份报告，已按各场景满分归一
+            </span>
+          </div>
+          <div>
+            {profile.dimensions.map((stat) => {
+              const trend = dimensionTrend(stat);
+              const weak = stat.average < 60;
+              return (
+                <div
+                  key={stat.dimension}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(120px, 190px) 1fr 72px",
+                    alignItems: "center",
+                    gap: 16,
+                    padding: "11px 0 9px",
+                    borderTop: "1px solid var(--rule-2)",
+                  }}
+                >
+                  <span style={{ fontSize: 13.5, fontWeight: 550 }}>
+                    {stat.dimension}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: "relative",
+                      display: "block",
+                      height: 4,
+                      background: "var(--rule)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: `${Math.max(0, Math.min(100, stat.average))}%`,
+                        background: weak ? "var(--mark)" : "var(--ink)",
+                      }}
+                    />
+                  </span>
+                  <span
+                    style={{
+                      textAlign: "right",
+                      fontSize: 13,
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                    title={`${stat.count} 次评分`}
+                  >
+                    {stat.average}%
+                    {trend === "up" ? " ↑" : trend === "down" ? " ↓" : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {/* 下一步练什么：把最弱的维度变成一次点得开的训练 */}
+      {!loading && suggestions.length > 0 ? (
+        <div>
+          <div className="section-label">
+            <span>下一步练什么</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {suggestions.map((suggestion, index) => (
+              <div
+                key={`${suggestion.dimension}-${index}`}
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 14,
+                  flexWrap: "wrap",
+                  border: "1px solid var(--rule-2)",
+                  background: "var(--paper-2)",
+                  padding: "12px 14px",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>
+                    {suggestion.starter
+                      ? "先完整走一遍产品拆解"
+                      : `再练一轮「${suggestion.dimension}」`}
+                  </div>
+                  <p
+                    style={{
+                      fontSize: 13,
+                      color: "var(--ink-3)",
+                      lineHeight: 1.75,
+                      marginTop: 4,
+                    }}
+                  >
+                    {suggestion.reason}
+                  </p>
+                </div>
+                <Link href={suggestionHref(suggestion)} className="vs-btn on">
+                  去训练
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* 最近留下的东西：一板便签，训练和记录混排 */}
       <div>

@@ -49,11 +49,13 @@ const WEB_SEARCH_TOOL: ToolDefinition = {
 export interface Toolset {
   defs: ToolDefinition[];
   mcpTools: MCPTool[];
+  /** MCP 连接失败之类需要让用户看见的问题（不再只进 console.warn） */
+  notes: string[];
 }
 
 /** 组装本次对话可用的工具集合。 */
 export async function buildToolset(settings: AISettings): Promise<Toolset> {
-  const mcpTools = await listAllTools(settings.mcpServers);
+  const { tools: mcpTools, errors } = await listAllTools(settings.mcpServers);
 
   const defs: ToolDefinition[] = [];
   if (settings.webSearch.enabled) defs.push(WEB_SEARCH_TOOL);
@@ -69,11 +71,62 @@ export async function buildToolset(settings: AISettings): Promise<Toolset> {
     });
   }
 
-  return { defs, mcpTools };
+  return { defs, mcpTools, notes: errors };
 }
 
 function truncate(text: string, max = MAX_RESULT_CHARS): string {
   return text.length <= max ? text : `${text.slice(0, max)}…（已截断）`;
+}
+
+/**
+ * 按工具自己的 inputSchema 收敛模型给的参数。
+ *
+ * 模型（或提示词注入）给出的参数是不可信输入，直接转发给 MCP 服务器等于
+ * 把任意对象交出去。这里只保留 schema 里声明过的字段，并做基本类型校验：
+ * 声明为 string 的就转成字符串，声明为 number/integer 的转不成数字就丢弃。
+ * schema 不是对象形状时无从校验，原样返回。
+ */
+function sanitizeToolArgs(
+  args: Record<string, unknown>,
+  schema: unknown,
+): Record<string, unknown> {
+  const spec = schema as
+    | { type?: string; properties?: Record<string, { type?: string }> }
+    | undefined;
+
+  if (!spec || spec.type !== "object" || !spec.properties) return args;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, declared] of Object.entries(spec.properties)) {
+    if (!(key in args)) continue;
+    const value = args[key];
+    switch (declared?.type) {
+      case "string":
+        if (typeof value === "string") out[key] = value;
+        else if (typeof value === "number" || typeof value === "boolean") {
+          out[key] = String(value);
+        }
+        break;
+      case "number":
+      case "integer": {
+        const num = typeof value === "number" ? value : Number(value);
+        if (Number.isFinite(num)) {
+          out[key] = declared.type === "integer" ? Math.round(num) : num;
+        }
+        break;
+      }
+      case "boolean":
+        if (typeof value === "boolean") out[key] = value;
+        break;
+      case "array":
+        if (Array.isArray(value)) out[key] = value;
+        break;
+      default:
+        // 没声明类型（或 object 等复杂类型）：原样带上，交给工具自己校验
+        out[key] = value;
+    }
+  }
+  return out;
 }
 
 /** 执行一次工具调用，返回喂给模型的文本 + 一条可展示的轨迹。 */
@@ -86,7 +139,9 @@ async function executeTool(
   let args: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(call.function?.arguments || "{}");
-    if (parsed && typeof parsed === "object") args = parsed as Record<string, unknown>;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      args = parsed as Record<string, unknown>;
+    }
   } catch {
     // 参数不是合法 JSON 就按空对象处理，让工具自己报错
   }
@@ -125,10 +180,12 @@ async function executeTool(
     };
   }
 
-  const result = await callTool(tool, args);
+  // 参数是不可信输入：按该工具的 inputSchema 收敛后再转发给 MCP 服务器
+  const safeArgs = sanitizeToolArgs(args, tool.inputSchema);
+  const result = await callTool(tool, safeArgs);
   const detail =
-    Object.keys(args).length > 0
-      ? `${tool.server.name} · ${tool.name}(${JSON.stringify(args).slice(0, 80)})`
+    Object.keys(safeArgs).length > 0
+      ? `${tool.server.name} · ${tool.name}(${JSON.stringify(safeArgs).slice(0, 80)})`
       : `${tool.server.name} · ${tool.name}`;
 
   return {
@@ -159,6 +216,7 @@ export interface ToolRoundOutcome {
  *
  * @param baseMessages 已经拼好的 system + 历史对话
  * @param fallbackQuery 端点不支持 tools 时，用它直接搜一次
+ * @param signal 调用方的取消信号（客户端断开时用来中止工具轮）
  */
 export async function runToolRounds(
   baseMessages: ChatMessage[],
@@ -166,6 +224,7 @@ export async function runToolRounds(
   settings: AISettings,
   sessionId: string,
   fallbackQuery: string,
+  signal?: AbortSignal,
 ): Promise<ToolRoundOutcome> {
   if (toolset.defs.length === 0) {
     return { messages: baseMessages, traces: [], degraded: false };
@@ -179,6 +238,7 @@ export async function runToolRounds(
       const reply = await chatWithTools(messages, toolset.defs, {
         temperature: settings.temperature,
         sessionId,
+        signal,
       });
 
       if (reply.toolCalls.length === 0) {
@@ -209,6 +269,10 @@ export async function runToolRounds(
     }
     return { messages, traces, degraded: false };
   } catch (error) {
+    /* 调用方主动取消（客户端断开）：不要再退化去检索一次，
+       那只会白白浪费一次外部请求，直接向上抛。 */
+    if (signal?.aborted) throw error;
+
     /* 端点不支持 tools（或工具轮里出了别的错）：退回「先搜后答」。
        训练不该因为工具挂了就中断。 */
     const reason = error instanceof Error ? error.message : String(error);

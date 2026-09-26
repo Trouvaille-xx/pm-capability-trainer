@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
+
 import { scoreTone } from "@/lib/client";
 import { gradeFor } from "@/lib/catalog";
-import type { TrainingReport } from "@/lib/types";
+import type { TrainingReport, TrainingScenario } from "@/lib/types";
 
 /**
  * 训练报告。
@@ -47,6 +49,45 @@ function Tick({ score, max }: { score: number; max: number }) {
 /** 报告里的一节：小标题 + 条目。条目本身是句子，不是标签云。 */
 const READING = { maxWidth: 880 } as const;
 
+const SECTION_TITLE = {
+  fontFamily: "var(--serif)",
+  fontSize: 17,
+  fontWeight: 600,
+  marginBottom: 4,
+} as const;
+
+const SECTION_LEAD = {
+  fontSize: 13,
+  color: "var(--ink-3)",
+  lineHeight: 1.8,
+  marginBottom: 14,
+} as const;
+
+const SECTION_LIST = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 0,
+} as const;
+
+function ItemBullet() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: 2,
+        top: 20,
+        width: 5,
+        height: 1,
+        background: "var(--ink-4)",
+      }}
+    />
+  );
+}
+
 function Section({
   title,
   lead,
@@ -62,36 +103,9 @@ function Section({
   return (
     /* 这些条目是句子，限宽到一行 30 来个汉字；和总体评价同一个阅读栏。 */
     <section style={{ marginTop: 34, ...READING }}>
-      <h2
-        style={{
-          fontFamily: "var(--serif)",
-          fontSize: 17,
-          fontWeight: 600,
-          marginBottom: 4,
-        }}
-      >
-        {title}
-      </h2>
-      <p
-        style={{
-          fontSize: 13,
-          color: "var(--ink-3)",
-          lineHeight: 1.8,
-          marginBottom: 14,
-        }}
-      >
-        {lead}
-      </p>
-      <ul
-        style={{
-          listStyle: "none",
-          margin: 0,
-          padding: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: 0,
-        }}
-      >
+      <h2 style={SECTION_TITLE}>{title}</h2>
+      <p style={SECTION_LEAD}>{lead}</p>
+      <ul style={SECTION_LIST}>
         {items.map((item, index) => (
           <li
             key={index}
@@ -104,17 +118,7 @@ function Section({
               color: "var(--ink-2)",
             }}
           >
-            <span
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                left: 2,
-                top: 20,
-                width: 5,
-                height: 1,
-                background: "var(--ink-4)",
-              }}
-            />
+            <ItemBullet />
             {markFirst && index === 0 ? (
               <strong style={{ color: "var(--ink)", fontWeight: 600 }}>
                 {item}
@@ -129,12 +133,85 @@ function Section({
   );
 }
 
+/**
+ * 「下一步练什么」。
+ *
+ * 与普通 Section 的唯一区别：每条后面挂一个真能点开的训练入口。
+ * 只写「下次练什么」而不给入口，建议就永远停在纸面上。
+ */
+function NextSteps({
+  items,
+  retryHref,
+}: {
+  items: string[];
+  retryHref: string | null;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section style={{ marginTop: 34, ...READING }}>
+      <h2 style={SECTION_TITLE}>下一步练什么</h2>
+      <p style={SECTION_LEAD}>下次开新训练时，直接拿这条当题目。</p>
+      <ul style={SECTION_LIST}>
+        {items.map((item, index) => (
+          <li
+            key={index}
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 14,
+              padding: "11px 0 11px 20px",
+              borderTop: "1px solid var(--rule-2)",
+              fontSize: 14.5,
+              lineHeight: 1.85,
+              color: "var(--ink-2)",
+            }}
+          >
+            <ItemBullet />
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                ...(index === 0 ? { color: "var(--ink)", fontWeight: 600 } : {}),
+              }}
+            >
+              {item}
+            </span>
+            {retryHref ? (
+              <Link
+                href={retryHref}
+                title="用同一个题目、带着这次的血缘再练一次"
+                style={{
+                  flex: "0 0 auto",
+                  fontSize: 12.5,
+                  color: "var(--mark)",
+                  whiteSpace: "nowrap",
+                  borderBottom: "1px solid var(--mark)",
+                  paddingBottom: 1,
+                  textDecoration: "none",
+                }}
+              >
+                按此训练
+              </Link>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function ReportView({
   report,
   topic,
+  sessionId,
+  scenario,
 }: {
   report: TrainingReport;
   topic: string;
+  /** 给了这两项才会有「用同一题目再练一次」的深链 */
+  sessionId?: string;
+  scenario?: TrainingScenario;
 }) {
   /* 老报告可能没有 overallMax / grade，兜底成百分制。 */
   const overallMax =
@@ -146,6 +223,13 @@ export function ReportView({
   const weakest = [...report.scores].sort(
     (a, b) => a.score / (a.max || 1) - b.score / (b.max || 1),
   )[0];
+
+  const retryHref =
+    sessionId && scenario
+      ? `/trainer/new?scenario=${scenario}&topic=${encodeURIComponent(
+          topic,
+        )}&retryOf=${sessionId}`
+      : null;
 
   return (
     /* 整块铺满版心。报告是长文，但外层不该再套一层窄容器 ——
@@ -247,24 +331,8 @@ export function ReportView({
       {/* ---- 分项评分 ---- */}
       {report.scores.length > 0 ? (
         <section style={{ marginTop: 40 }}>
-          <h2
-            style={{
-              fontFamily: "var(--serif)",
-              fontSize: 17,
-              fontWeight: 600,
-              marginBottom: 4,
-            }}
-          >
-            分项评分
-          </h2>
-          <p
-            style={{
-              fontSize: 13,
-              color: "var(--ink-3)",
-              lineHeight: 1.8,
-              marginBottom: 8,
-            }}
-          >
+          <h2 style={SECTION_TITLE}>分项评分</h2>
+          <p style={{ ...SECTION_LEAD, marginBottom: 8 }}>
             刻度是这一项的满分。落在后半段的用朱砂标出来。
           </p>
 
@@ -345,12 +413,14 @@ export function ReportView({
         lead="照着改就能加分的动作。"
         items={report.suggestions}
       />
-      <Section
-        title="下一步练什么"
-        lead="下次开新训练时，直接拿这条当题目。"
-        items={report.nextSteps}
-        markFirst
-      />
+      <NextSteps items={report.nextSteps} retryHref={retryHref} />
+
+      {/* 标签不做成标签云：一行带过，主要给训练列表的搜索用 */}
+      {report.tags && report.tags.length > 0 ? (
+        <p style={{ marginTop: 30, fontSize: 12.5, color: "var(--ink-3)", ...READING }}>
+          标签：{report.tags.join(" · ")}
+        </p>
+      ) : null}
 
       <p
         style={{

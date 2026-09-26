@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方法论 · 线索板</title>
+<style>
+/* ==========================================================================
+   方法论 · 线索板（Evidence Board）
+   --------------------------------------------------------------------------
+   调性：侦探贴便签的线索墙。词条是一张张歪着的便签，钉在板上。
+   字体配色沿用上一版：衬线标题 + 纯黑白灰 + 朱砂 #C0392B 点缀。
+
+   两个视图：
+   1. 卡片（默认）—— 全部词条平铺，左右歪 ±15°，一眼扫完全部
+   2. 翻页 —— 单个精读，左右翻页或上下键切换
+
+   关键决策：
+   - 歪斜是「结构装置」不是装饰：角度固定由词条 id 决定，
+     所以同一个词条每次看都在同一个角度（位置记忆）。
+   - 悬停时便签「扶正」（回到 0°）并抬起 —— 这是可读性与玩心的平衡。
+   - 每张便签顶部有一颗图钉，钉的深浅表示它是否与训练相关。
+   ========================================================================== */
+
+:root{
+  --paper: #FFFFFF;
+  --board: #F4F2EE;      /* 线索板的底：比纸略深一点的木色 */
+  --board-2: #EDEAE4;
+  --ink:   #111111;
+  --ink-2: #4A4A4A;
+  --ink-3: #8A8A8A;
+  --ink-4: #B8B8B8;
+  --rule:  #E4E4E4;
+  --mark:  #C0392B;      /* 唯一点缀色：朱砂 */
+
+  --serif: "Source Han Serif SC", "Songti SC", "SimSun",
+           "Iowan Old Style", "Palatino", Georgia, serif;
+  --sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+           "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+
+  --ease: cubic-bezier(.22,1,.36,1);
+  --spring: cubic-bezier(.34,1.4,.64,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  background:var(--board);color:var(--ink);
+  font-family:var(--sans);font-size:14.5px;line-height:1.8;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+  padding-left:var(--rail-w);
+  transition:padding-left var(--rail-dur) var(--spring);
+}
+/* 展开时内容区同步向右让位 —— 不能做成浮层盖上去，那会直接遮住便签 */
+body.rail-open{padding-left:var(--rail-w-open)}
+
+
+/* ============================================================
+   侧栏 · 折叠 / 展开（与 _shared.css 一致）
+   ============================================================ */
+:root{ --rail-w:68px; --rail-w-open:200px; --rail-bg:#E9E5DE; --rail-dur:.34s; }
+
+.rail{
+  position:fixed;top:0;left:0;bottom:0;z-index:50;
+  width:var(--rail-w);
+  background:var(--rail-bg);
+  border-right:1px solid rgba(20,18,15,.11);
+  display:flex;flex-direction:column;
+  padding:14px 0 12px;overflow:hidden;
+  transition:width var(--rail-dur) var(--spring);
+}
+.rail.open{width:var(--rail-w-open)}
+.rail::after{
+  content:"";position:absolute;top:0;bottom:0;right:-16px;width:16px;
+  background:linear-gradient(90deg, rgba(20,18,15,.055), transparent);
+  pointer-events:none;
+}
+.rail-brand{
+  display:flex;align-items:center;gap:11px;
+  padding:0 0 14px;margin:0 18px 14px;
+  border-bottom:1px solid rgba(20,18,15,.09);
+  text-decoration:none;flex:none;
+}
+.rail-mark{
+  width:26px;height:26px;background:var(--mark);flex:none;
+  transition:transform .4s var(--spring);
+}
+.rail-brand:hover .rail-mark{transform:rotate(45deg)}
+.rail-name{
+  font-family:var(--serif);font-size:14px;color:var(--ink-2);
+  letter-spacing:.04em;white-space:nowrap;
+  opacity:0;transform:translateX(-6px);
+  transition:opacity .2s var(--ease), transform .3s var(--spring);
+}
+.rail.open .rail-name{opacity:1;transform:none}
+
+.rail-nav{display:flex;flex-direction:column;gap:7px;flex:none;padding:0 18px}
+.rail.open .rail-nav{padding:0 12px}
+.rail-tab{
+  position:relative;display:flex;align-items:center;gap:11px;
+  height:34px;padding:0 6px;
+  text-decoration:none;cursor:pointer;color:var(--ink-3);
+  font-family:var(--sans);font-size:13.5px;white-space:nowrap;
+  background:transparent;border:0;
+  transition:color .2s var(--ease), background .22s var(--ease);
+}
+.rail-tab::before{
+  content:"";flex:none;width:22px;height:3px;background:var(--ink-4);
+  transition:all .3s var(--spring);
+}
+.rail-tab:hover{color:var(--ink)}
+.rail-tab:hover::before{background:var(--ink-2);width:28px}
+.rail-tab .lbl{opacity:0;transform:translateX(-8px);
+  transition:opacity .2s var(--ease), transform .3s var(--spring)}
+.rail.open .rail-tab .lbl{opacity:1;transform:none}
+.rail-tab .cnt{margin-left:auto;font-size:11.5px;color:var(--ink-4);
+  opacity:0;transition:opacity .2s var(--ease)}
+.rail.open .rail-tab .cnt{opacity:1}
+.rail-tab.here{color:var(--ink);font-weight:600;background:var(--paper-2)}
+.rail-tab.here::before{width:22px;height:12px;background:var(--mark);border-radius:1px}
+.rail.open .rail-tab.here::before{width:14px;height:14px;border-radius:0}
+
+.rail-foot{
+  margin-top:auto;display:flex;flex-direction:column;gap:7px;
+  padding:14px 18px 0;border-top:1px solid rgba(20,18,15,.09);flex:none;
+}
+.rail.open .rail-foot{padding:14px 12px 0}
+.rail-btn{
+  display:flex;align-items:center;gap:11px;height:34px;padding:0 6px;
+  background:none;border:0;cursor:pointer;color:var(--ink-3);
+  font-family:var(--sans);font-size:13.5px;white-space:nowrap;
+  transition:color .2s var(--ease);
+}
+.rail-btn:hover{color:var(--ink)}
+.rail-btn svg{width:17px;height:17px;flex:none}
+.rail-btn .lbl{opacity:0;transition:opacity .2s var(--ease)}
+.rail.open .rail-btn .lbl{opacity:1}
+.rail-toggle{color:var(--ink-4)}
+.rail-toggle:hover{color:var(--ink)}
+
+/* 状态：用方括号，不用小圆点（圆点会读成「·」串联） */
+.state-mark{
+  display:inline-flex;align-items:baseline;
+  font-size:11.5px;color:var(--ink-4);letter-spacing:.02em;
+}
+.state-mark:empty{display:none}
+.state-mark::before{content:"[";margin-right:1px}
+.state-mark::after{content:"]";margin-left:1px}
+.note-domain{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;flex:none}
+.note-domain > span:first-child{font-size:12.5px;color:var(--ink-2);
+  font-weight:600;letter-spacing:.01em}
+
+/* ============================================================ 首部
+   标题 + 视图切换，横向一条，不占太多高度 */
+.masthead{
+  max-width:1360px;margin:0 auto;padding:38px 40px 0;
+  position:relative;z-index:1;
+}
+.mast-top{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  gap:32px;flex-wrap:wrap;
+  padding-bottom:16px;border-bottom:2px solid var(--ink);
+}
+.mast-l h1{
+  font-family:var(--serif);font-size:38px;font-weight:600;
+  line-height:1.14;letter-spacing:.01em;
+}
+.mast-sub{
+  margin-top:8px;font-size:13px;color:var(--ink-3);
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+}
+.mast-sub .d{width:3px;height:3px;border-radius:50%;background:var(--ink-4)}
+
+/* 视图切换：像书里的「索引 / 正文」两个入口 */
+.viewswitch{display:flex;align-items:center;gap:0;flex:none}
+.vs-btn{
+  background:none;border:0;font-family:inherit;font-size:13px;cursor:pointer;
+  color:var(--ink-3);padding:6px 14px;position:relative;
+  border:1px solid transparent;transition:all .2s;
+}
+.vs-btn:hover{color:var(--ink-2)}
+.vs-btn.on{
+  color:var(--ink);font-weight:600;border-color:var(--ink);
+}
+.vs-btn + .vs-btn{border-left:0}
+.vs-btn.on + .vs-btn{border-left:1px solid var(--ink)}
+.vs-btn.on:first-child + .vs-btn{border-left:1px solid var(--ink)}
+
+/* 控制条：检索 + 筛选 */
+.controls{
+  display:flex;align-items:center;gap:24px;flex-wrap:wrap;
+  padding:16px 0 0;
+}
+.lookup{flex:1;min-width:220px;display:flex;align-items:baseline;gap:10px;
+  border-bottom:1px solid var(--ink);padding-bottom:7px}
+.lookup input{
+  flex:1;border:0;outline:0;background:transparent;
+  font-family:var(--serif);font-size:18px;color:var(--ink);padding:0;
+}
+.lookup input::placeholder{color:var(--ink-4);font-style:italic}
+.lookup-hint{font-family:var(--sans);font-size:12px;color:var(--ink-4);white-space:nowrap}
+.filters{display:flex;flex-wrap:wrap;gap:16px;font-size:12.5px}
+.filters button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:12.5px;
+  color:var(--ink-3);cursor:pointer;position:relative;transition:color .18s;
+}
+.filters button:hover{color:var(--ink-2)}
+.filters button.on{color:var(--ink);font-weight:600}
+.filters button.on::after{
+  content:"";position:absolute;left:0;right:0;bottom:-4px;height:2px;background:var(--mark);
+}
+.filters .count{color:var(--ink-4);font-size:10.5px;margin-left:1px;font-weight:400}
+
+/* ============================================================ 线索板
+   卡片平铺的墙。便签左右歪 ±15°，悬停扶正。 */
+.board{
+  max-width:1360px;margin:0 auto;padding:44px 40px 90px;
+  position:relative;z-index:1;
+}
+.wall{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(272px,1fr));
+  gap:34px 30px;
+  align-items:start;
+  /* 便签旋转的外接矩形比布局盒宽，留出余量避免顶出视口 */
+  padding:0 16px;
+}
+
+/* ---- 便签 ---- */
+.note{
+  position:relative;background:var(--paper);
+  padding:24px 22px 20px;
+  border:1px solid rgba(17,17,17,.09);
+  box-shadow:0 1px 2px rgba(17,17,17,.06), 0 10px 26px -14px rgba(17,17,17,.24);
+  cursor:pointer;
+  display:flex;flex-direction:column;
+  /* 歪斜由 --tilt 控制，JS 按 id 固定生成 */
+  transform:rotate(var(--tilt,0deg));
+  transition:transform .34s var(--spring), box-shadow .34s var(--ease), border-color .34s var(--ease);
+  transform-origin:50% 12px;
+}
+.note:hover{
+  transform:rotate(0deg) translateY(-7px) scale(1.018);
+  box-shadow:0 3px 6px rgba(17,17,17,.07), 0 24px 50px -18px rgba(17,17,17,.3);
+  border-color:rgba(17,17,17,.16);
+  z-index:5;
+}
+.note:focus-visible{outline:1.5px solid var(--mark);outline-offset:4px}
+/* 便签的所有直接子块都不参与拉伸，只有 footer 的 margin-top:auto 吸收多余空间 */
+.note > *{flex:none}
+.note > .note-foot{margin-top:auto}
+
+/* 图钉：钉在便签顶边正中 */
+.pin{
+  position:absolute;top:-9px;left:50%;margin-left:-7px;
+  width:14px;height:14px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%, #fff 0%, #D8D4CC 42%, #A8A29A 100%);
+  box-shadow:0 2px 5px rgba(17,17,17,.4), inset 0 -1px 2px rgba(255,255,255,.5);
+  z-index:2;
+}
+/* 与训练相关的便签：钉是朱砂色的 */
+.note.flagged .pin{
+  background:radial-gradient(circle at 34% 30%, #F4B0A4 0%, var(--mark) 48%, #8E2A1F 100%);
+  box-shadow:0 3px 9px rgba(192,57,43,.5), inset 0 -1px 2px rgba(255,255,255,.45);
+}
+/* 左上角的折角 */
+.note::after{
+  content:"";position:absolute;top:0;right:0;
+  width:20px;height:20px;
+  background:linear-gradient(225deg, var(--board) 48%, rgba(17,17,17,.055) 50%, transparent 52%);
+  border-bottom-left-radius:4px;
+}
+
+/* 便签内容 */
+.note-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:11px;flex:none}
+.note-title{
+  font-family:var(--serif);font-size:22px;font-weight:600;
+  letter-spacing:.01em;line-height:1.3;
+}
+.note-def{
+  font-size:15px;line-height:1.78;color:var(--ink);
+  margin-bottom:11px;flex:none;
+}
+/* 详情最多三行。min-height:0 是必须的：
+   flex 列里的 line-clamp 元素会按未裁剪高度撑开，把 footer 推出便签外 */
+.note-detail{
+  font-size:13.5px;line-height:1.85;color:var(--ink-2);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  overflow:hidden;
+  max-height:calc(1.85em * 3);min-height:0;flex:none;
+}
+
+/* 便签底部：一个极小的标记 + 提示 */
+.note-foot{
+  margin-top:auto;padding-top:13px;border-top:1px dashed rgba(20,18,15,.13);
+  display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+  font-size:11.5px;color:var(--ink-4);
+  flex:none;min-height:0;
+}
+.note-foot > span:first-child{
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.note-foot .flag{color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.note-foot .flag::before{content:'''';width:4px;height:4px;flex:none;background:var(--ink-4)}
+.note-foot{position:relative}
+.note-foot .more{
+  position:absolute;right:0;bottom:0;
+  font-size:11.5px;letter-spacing:.02em;color:var(--mark);
+  opacity:0;transform:translateX(-4px);
+  transition:opacity .22s var(--ease), transform .26s var(--spring);
+  pointer-events:none;
+}
+.note:hover .note-foot .more,
+.note:focus-visible .note-foot .more{opacity:1;transform:none}
+
+/* ============================================================ 翻页视图
+   一次只看一个词条。左右是翻页箭头，下方是进度。 */
+.reader{
+  display:none;max-width:720px;margin:0 auto;padding:44px 40px 90px;
+  position:relative;z-index:1;
+}
+.reader.on{display:block}
+.reader-card{
+  background:var(--paper);
+  border:1px solid rgba(17,17,17,.09);
+  box-shadow:0 2px 4px rgba(17,17,17,.05), 0 20px 50px -22px rgba(17,17,17,.28);
+  padding:52px 56px 44px;
+  position:relative;
+  animation:pageIn .42s var(--ease);
+}
+@keyframes pageIn{from{opacity:0;transform:translateX(14px) rotate(.4deg)}to{opacity:1;transform:none}}
+/* 翻页时用图钉标记「相关」 */
+.reader-card .pin{top:-9px}
+.reader-domain{
+  font-family:var(--sans);font-size:12px;color:var(--ink-3);
+  letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:10px;
+}
+.reader-flag{color:var(--mark);font-weight:600}
+.reader-title{
+  font-family:var(--serif);font-size:40px;font-weight:600;
+  line-height:1.18;letter-spacing:.01em;margin-bottom:18px;
+}
+.reader-def{
+  font-size:18px;line-height:1.78;color:var(--ink);
+  padding-bottom:22px;border-bottom:1px solid var(--rule);margin-bottom:24px;
+}
+.reader-detail{font-size:15.5px;line-height:1.95;color:var(--ink-2)}
+.reader-sec{margin-top:30px;padding-top:24px;border-top:1px dashed var(--rule)}
+.reader-sec-label{
+  font-family:var(--sans);font-size:12px;color:var(--ink-4);
+  letter-spacing:.1em;margin-bottom:11px;display:block;
+}
+.reader-sec-body{font-size:15px;line-height:1.9;color:var(--ink-2)}
+.reader-example{
+  font-family:var(--serif);font-size:15px;font-style:italic;
+  color:var(--ink-3);line-height:1.9;
+}
+.reader-actions{margin-top:34px;display:flex;gap:22px;font-size:13px}
+.reader-actions button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:13px;
+  color:var(--ink-3);cursor:pointer;border-bottom:1px solid transparent;transition:all .18s;
+}
+.reader-actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.reader-actions button.go{color:var(--mark);font-weight:600}
+.reader-actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* 返回便签墙的路径条 */
+.backbar{display:none;margin-bottom:22px}
+.backbar button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:12.5px;
+  color:var(--ink-3);cursor:pointer;display:flex;align-items:center;gap:7px;
+  border-bottom:1px solid transparent;transition:all .18s;
+}
+.backbar button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.backbar svg{width:14px;height:14px}
+
+/* 翻页控制 */
+.pager{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-top:26px;padding-top:20px;border-top:1px solid rgba(17,17,17,.1);
+}
+.pager-btn{
+  background:none;border:0;font-family:inherit;font-size:13px;color:var(--ink-3);
+  cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 0;
+  transition:color .18s;
+}
+.pager-btn:hover:not(:disabled){color:var(--ink)}
+.pager-btn:disabled{color:var(--ink-4);cursor:not-allowed;opacity:.5}
+.pager-btn svg{width:14px;height:14px}
+.pager-mid{
+  font-family:var(--sans);font-size:12px;color:var(--ink-4);
+  display:flex;align-items:center;gap:14px;
+}
+/* 进度：一排小点，当前是朱砂 */
+.dots{display:flex;gap:5px}
+.dots i{
+  width:5px;height:5px;border-radius:50%;background:var(--ink-4);
+  cursor:pointer;transition:all .22s var(--spring);
+}
+.dots i.on{background:var(--mark);transform:scale(1.5)}
+.dots i:hover{background:var(--ink-3)}
+
+/* 空态 */
+.empty{
+  grid-column:1/-1;padding:60px 0;text-align:center;
+  color:var(--ink-4);font-size:14px;font-style:italic;
+}
+
+/* 底部：卷末信息 */
+.colophon{
+  max-width:1360px;margin:0 auto;padding:0 40px 60px;
+  display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;
+  font-size:11.5px;color:var(--ink-4);line-height:2;
+  position:relative;z-index:1;
+}
+.colophon b{color:var(--ink-3);font-weight:600}
+.colophon .mk{color:var(--mark)}
+
+/* 键盘提示：固定在右下角，所以永远会压住内容。
+   改成默认隐藏，按 ? 才出现。 */
+.hintbar{
+  position:fixed;right:30px;bottom:26px;z-index:30;
+  font-family:var(--sans);font-size:12px;color:var(--ink-3);
+  background:rgba(255,255,255,.96);backdrop-filter:blur(10px);
+  border:1px solid rgba(20,18,15,.12);padding:9px 14px;
+  display:flex;gap:16px;align-items:center;
+  box-shadow:0 8px 26px -14px rgba(20,18,15,.4);
+  opacity:0;visibility:hidden;transform:translateY(6px);
+  transition:opacity .2s var(--ease), transform .24s var(--spring), visibility .2s;
+  pointer-events:none;
+}
+.hintbar.show{opacity:1;visibility:visible;transform:none;pointer-events:auto}
+.hintbar kbd{
+  font-family:var(--sans);font-size:11.5px;background:var(--board-2);
+  border:1px solid rgba(20,18,15,.12);padding:1px 5px;color:var(--ink-2);
+}
+
+/* 提示条 */
+.toast{
+  position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(14px);
+  padding:10px 18px;background:var(--ink);color:#fff;font-size:12.5px;
+  opacity:0;pointer-events:none;transition:all .3s var(--spring);z-index:99;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+:focus-visible{outline:1.5px solid var(--mark);outline-offset:3px}
+::selection{background:rgba(192,57,43,.14)}
+
+@media (max-width:760px){
+  /* 手机上侧栏变成底部横条；展开态在手机上无意义，一律平铺 */
+  body{padding-left:0 !important;padding-bottom:62px}
+  .rail, .rail.open{
+    top:auto;right:0;bottom:0;left:0;width:auto;height:62px;
+    flex-direction:row;align-items:center;gap:0;
+    padding:0 10px;border-right:0;border-top:1px solid rgba(20,18,15,.11);
+    overflow-x:auto;
+  }
+  .rail::after{display:none}
+  .rail-brand{flex-direction:row;padding:0 12px 0 2px;margin:0;
+    border-bottom:0;border-right:1px solid rgba(20,18,15,.09)}
+  .rail-name{display:none}
+  .rail-mark{width:22px;height:22px}
+  .rail-nav{flex-direction:row;gap:3px;padding:0}
+  .rail-tab{height:auto;padding:8px 10px;gap:0;font-size:13px}
+  .rail-tab::before{display:none}
+  .rail-tab .lbl{opacity:1;transform:none}
+  .rail-tab .cnt{opacity:1;margin-left:6px}
+  .rail-foot{margin:0 0 0 auto;flex-direction:row;padding:0 0 0 8px;border-top:0}
+  .rail-btn{height:auto;padding:8px 9px}
+  .rail-btn .lbl{display:none}
+  .rail-toggle{display:none}
+
+  .masthead,.board,.reader,.colophon{padding-left:20px;padding-right:20px}
+  .wall{grid-template-columns:1fr;gap:30px}
+  .reader-card{padding:34px 24px 30px}
+  .reader-title{font-size:29px}
+  .mast-l h1{font-size:29px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<nav class="rail" aria-label="主导航">
+  <a class="rail-brand" href="08-overview.html">
+    <span class="rail-mark"></span>
+    <span class="rail-name">能力训练平台</span>
+  </a>
+  <div class="rail-nav">
+    <a class="rail-tab" href="08-overview.html"><span class="lbl">概览</span></a>
+    <a class="rail-tab" href="09-captures.html"><span class="lbl">记录总结</span><span class="cnt">0</span></a>
+    <span class="rail-tab here" aria-current="page"><span class="lbl">方法论</span><span class="cnt">21</span></span>
+    <a class="rail-tab" href="10-trainer.html"><span class="lbl">AI 训练师</span><span class="cnt">2</span></a>
+    <a class="rail-tab" href="11-settings.html"><span class="lbl">辅助系统</span></a>
+  </div>
+  <div class="rail-foot">
+    <button class="rail-btn rail-toggle" aria-expanded="false" title="展开侧栏（[）">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <span class="lbl">收起</span>
+    </button>
+    <button class="rail-btn" title="搜索（⌘K）" onclick="window.boardToast ? boardToast('搜索（⌘K）') : alert('搜索（⌘K）')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span class="lbl">搜索</span>
+    </button>
+    <button class="rail-btn" title="回到顶部" onclick="scrollTo({top:0,behavior:'smooth'})">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+      <span class="lbl">回到顶部</span>
+    </button>
+  </div>
+</nav>
+    <div class="viewswitch">
+      <button class="vs-btn on" id="vs-card" onclick="setView('card')">便签墙</button>
+      <button class="vs-btn" id="vs-reader" onclick="setView('reader')">逐条阅读</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="lookup">
+      <input id="q" placeholder="查一个词条…" autocomplete="off">
+      <span class="lookup-hint" id="qhint">21 条中检索</span>
+    </div>
+    <div class="filters" id="filters"></div>
+  </div>
+</header>
+
+<!-- 便签墙 -->
+<section class="board" id="board">
+  <div class="wall" id="wall"></div>
+</section>
+
+<!-- 逐条阅读 -->
+<section class="reader" id="reader">
+  <div class="backbar" id="backbar">
+    <button onclick="setView('card')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      回到便签墙
+    </button>
+  </div>
+  <div class="reader-card" id="rcard"></div>
+  <div class="pager">
+    <button class="pager-btn" id="prev" onclick="step(-1)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      上一个
+    </button>
+    <div class="pager-mid">
+      <div class="dots" id="dots"></div>
+      <span id="pnum">1 / 6</span>
+    </div>
+    <button class="pager-btn" id="next" onclick="step(1)">
+      下一个
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+</section>
+
+<footer class="colophon">
+  <span>
+    <b>方法论</b> · 21 个词条 · 8 个领域<br>
+    心理学 5 · 经济学 3 · 商业与战略 3 · 产品设计 3<br>
+    用户研究 3 · 数据与分析 2 · 项目管理 1 · 增长与运营 1
+  </span>
+  <span style="text-align:right">
+    朱砂图钉 <span class="mk">●</span> 表示该词条与进行中的训练相关<br>
+    便签角度按词条固定，便于位置记忆<br>
+    最近更新 2026-09-24
+  </span>
+</footer>
+
+<div class="hintbar">
+  <span><kbd>/</kbd> 检索</span>
+  <span><kbd>←</kbd><kbd>→</kbd> 翻页</span>
+  <span><kbd>空格</kbd> 切换视图</span>
+  <span><kbd>[</kbd> 侧栏</span>
+  <span class="hint-label">按 <kbd>?</kbd> 关闭</span>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   真实数据（来自 data/methodology.json）
+   ============================================================ */
+const ENTRIES = [
+  {id:"mth_01",domain:"心理学",title:"损失厌恶",
+   oneLiner:"同样大小的得失，失去带来的痛苦大约是得到带来的快乐的两倍。",
+   detail:"人在面对收益时倾向规避风险，面对损失时反而倾向冒险。这让用户对「失去已有权益」的反应远强于「获得同等新权益」。边界：当损失很小或反复出现时会钝化；对不熟悉的领域参照点不明确，效应减弱。常见误区：把所有促销都做成「限时折扣」，其实对已付费用户而言，涨价预警比折扣更能驱动行动。",
+   howToUse:"设计留存、续费、迁移类功能时，先想清楚用户此刻的「参照点」是什么，再去构造损失；把免费额度、已积累的数据、已获得的等级当成参照点。",
+   example:"网盘续费页强调「你的 2,000 张照片将被压缩」而不是「续费立减 10 元」；后者是收益，前者是损失。",
+   scenarios:["产品拆解","流程设计"],flagged:true},
+
+  {id:"mth_02",domain:"心理学",title:"认知负荷",
+   oneLiner:"工作记忆一次只能处理少量信息，超出部分会被直接放弃。",
+   detail:"认知负荷分三类：内在负荷（任务本身难度）、外在负荷（界面与表达造成的额外负担）、关联负荷（用于建立理解的有益难度）。设计能优化的是外在负荷，砍掉它才能把有限的工作记忆让给真正的任务。",
+   howToUse:"表单、向导、配置页优先做「减负」：能推断的不问、能默认的不选、能分步的不堆在一屏。但不要把需要思考的关联负荷也一起砍掉。",
+   example:"结算页把「收货地址」默认带入上次地址，用户只需确认，而不是重新填六个字段。",
+   scenarios:["产品拆解","流程设计"],flagged:true},
+
+  {id:"mth_03",domain:"心理学",title:"峰终定律",
+   oneLiner:"人对一段体验的评价，主要由最高峰和结束时的感受决定，与过程长短无关。",
+   detail:"体验自我与记忆自我是两套系统。记忆不记录平均，只记录极值与结尾。这意味着一段很长的平庸体验，只要结尾漂亮，整体评价就会偏高。",
+   howToUse:"把资源集中在两个位置：过程的最高峰，以及结束的那一下。中途的均匀投入几乎不产生记忆。",
+   example:"宜家的 1 元冰淇淋放在出口，不是因为便宜，是因为它是整段购物体验的「最后一下」。",
+   scenarios:["产品拆解"],flagged:false},
+
+  {id:"mth_04",domain:"心理学",title:"锚定效应",
+   oneLiner:"最先出现的数字会成为一个参考点，影响后续所有判断。",
+   detail:"锚定即便在被明确告知「这个数字是随机的」之后依然生效。它作用在无意识层面，所以不能靠「保持理性」来规避。",
+   howToUse:"定价页先展示贵的方案，再展示你想卖的方案；谈判时先出价的一方通常占据优势。",
+   example:"订阅页把 Enterprise 放在最左，个人版放右侧，「¥68/月」就显得合理了。",
+   scenarios:["产品拆解"],flagged:false},
+
+  {id:"mth_05",domain:"心理学",title:"确认偏误",
+   oneLiner:"人倾向于寻找支持自己已有观点的证据，而忽略相反的证据。",
+   detail:"这在用户调研里造成双重损害：研究者会问出引导性问题，受访者也会给出迎合性回答。",
+   howToUse:"访谈时先问行为（你上次怎么做），再问态度（你觉得怎么样）。前者比后者难被污染。",
+   example:"「你觉得这个功能有用吗」永远得到「有用」；「你上次遇到这个问题时做了什么」才能得到真实信息。",
+   scenarios:["需求调研"],flagged:false},
+
+  {id:"mth_06",domain:"经济学",title:"机会成本",
+   oneLiner:"为了得到某样东西而放弃的、价值最高的那个替代选项。",
+   detail:"成本不是花掉的钱，而是放弃了的最好选择。做功能时真正的成本是团队这段时间不能做的事。",
+   howToUse:"排优先级时，把每个需求换算成「不做它就能做什么」，比换算成「开发要几天」更接近真实决策。",
+   example:"这个需求要 2 个迭代，意味着推荐系统改版要推迟到下季度 —— 后者才是它的成本。",
+   scenarios:["流程设计","需求调研"],flagged:false}
+];
+
+const DOMAINS = [
+  ["全部",21],["心理学",5],["经济学",3],["商业与战略",3],["产品设计",3],
+  ["用户研究",3],["数据与分析",2],["项目管理",1],["增长与运营",1]
+];
+
+/* ============================================================
+   便签角度
+   --------------------------------------------------------------------------
+   要求：每个词条的角度都不一样（不能撞），且同一词条每次都是同一个角度。
+
+   做法：先生成一批候选角度，再用「按 id 哈希排序」的方式分配。
+   这样既保证两两不重复，又是确定性的（刷新页面角度不变）。
+   ============================================================ */
+const TILT_MIN = 3.5;    // 太小的角度看起来像渲染错误，避开
+const TILT_MAX = 15;
+
+/* 生成 n 个互不相同的角度：在 ±[MIN,MAX] 区间内均匀铺开 */
+function tiltPool(n){
+  const out = [];
+  const half = [];
+  for(let i=0;i<n;i++){
+    // 左右交替：3.5, -3.5, 6.1, -6.1, ... 幅度递增
+    const t = i % 2 === 0 ? 1 : -1;
+    const step = Math.floor(i/2);
+    const span = TILT_MAX - TILT_MIN;
+    half.push(t * (TILT_MIN + (n > 1 ? span * step / Math.max(1, Math.floor((n-1)/2)) : 0)));
+  }
+  // 上面是按排序铺的，这里打乱成"看起来随机"的次序
+  for(const v of half) out.push(v);
+  return out.map(v => Math.round(v*10)/10);
+}
+
+/* 按 id 哈希给每个词条排一个固定的名次，再取对应角度 */
+function assignTilts(entries){
+  const n = entries.length;
+  const pool = tiltPool(n);
+  const order = entries.map((e,i)=>({
+    i,
+    key: (()=>{ let h=2166136261; for(const ch of e.id){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h>>>0; })()
+  })).sort((a,b)=>a.key-b.key).map(o=>o.i);
+
+  const map = {};
+  order.forEach((entryIdx, rank)=>{ map[entries[entryIdx].id] = pool[rank]; });
+  return map;
+}
+let TILTS = {};
+
+/* ============================================================
+   状态
+   ============================================================ */
+let view = "card";
+let activeDomain = "全部";
+let keyword = "";
+let readerIndex = 0;
+
+function visible(){
+  return ENTRIES.filter(e=>{
+    if(activeDomain !== "全部" && e.domain !== activeDomain) return false;
+    if(keyword){
+      const k = keyword.toLowerCase();
+      return (e.title+e.oneLiner+e.detail).toLowerCase().includes(k);
+    }
+    return true;
+  });
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+/* ============================================================
+   渲染：便签墙
+   ============================================================ */
+const wall = document.getElementById("wall");
+
+function renderWall(){
+  const list = visible();
+  if(!list.length){
+    wall.innerHTML = `<div class="empty">没有找到「${esc(keyword)}」这个词条。</div>`;
+    updateHint(0);
+    return;
+  }
+  wall.innerHTML = list.map((e,i)=>`
+    <article class="note${e.flagged?" flagged":""}" style="--tilt:${TILTS[e.id]||0}deg"
+             tabindex="0" data-id="${e.id}" data-idx="${ENTRIES.indexOf(e)}">
+      <span class="pin"></span>
+      <div class="note-domain">
+        <span>${esc(e.domain)}</span>
+        <span class="state-mark">${e.flagged ? "训练中使用" : ""}</span>
+      </div>
+      <div class="note-head">
+        <h2 class="note-title">${esc(e.title)}</h2>
+      </div>
+      <p class="note-def">${esc(e.oneLiner)}</p>
+      <p class="note-detail">${esc(e.detail)}</p>
+      <div class="note-foot">
+        <span>${e.scenarios && e.scenarios.length ? esc(e.scenarios.length + " 个使用场景") : ""}</span>
+        <span class="more">打开</span>
+      </div>
+    </article>
+  `).join("");
+  updateHint(list.length);
+}
+
+/* 点击便签 = 打开详情（进入逐条阅读），不在原地展开 */
+wall.addEventListener("click", e=>{
+  const note = e.target.closest(".note");
+  if(!note) return;
+  openEntry(note.dataset.id);
+});
+wall.addEventListener("keydown", e=>{
+  if(e.key !== "Enter" && e.key !== " ") return;
+  const note = e.target.closest(".note");
+  if(!note) return;
+  e.preventDefault();
+  openEntry(note.dataset.id);
+});
+
+/* 打开某个词条的详情：切到阅读视图并定位到它 */
+function openEntry(id){
+  const idx = ENTRIES.findIndex(x=>x.id === id);
+  if(idx < 0) return;
+  const list = visible();
+  const pos = list.findIndex(x=>x.id === id);
+  readerIndex = pos < 0 ? 0 : pos;
+  setView("reader", true);
+  scrollTo({top:0, behavior:"smooth"});
+}
+
+/* ============================================================
+   渲染：逐条阅读
+   ============================================================ */
+const rcard = document.getElementById("rcard");
+const dots  = document.getElementById("dots");
+
+function renderReader(){
+  const list = visible();
+  if(!list.length){
+    rcard.innerHTML = `<div style="padding:40px 0;color:var(--ink-4);text-align:center;font-style:italic">
+      没有可显示的词条。</div>`;
+    dots.innerHTML = ""; document.getElementById("pnum").textContent = "0 / 0";
+    document.getElementById("prev").disabled = true;
+    document.getElementById("next").disabled = true;
+    return;
+  }
+  readerIndex = Math.max(0, Math.min(readerIndex, list.length-1));
+  const e = list[readerIndex];
+
+  rcard.innerHTML = `
+    <span class="pin"${e.flagged?' style="background:radial-gradient(circle at 34% 30%,#F4B0A4 0%,#C0392B 48%,#8E2A1F 100%)"':""}></span>
+    <div class="reader-domain">
+      ${esc(e.domain)}
+      ${e.flagged?`<span class="reader-flag">● 训练中使用</span>`:""}
+    </div>
+    <h2 class="reader-title">${esc(e.title)}</h2>
+    <p class="reader-def">${esc(e.oneLiner)}</p>
+    <p class="reader-detail">${esc(e.detail)}</p>
+
+    <div class="reader-sec">
+      <span class="reader-sec-label">怎么用</span>
+      <p class="reader-sec-body">${esc(e.howToUse)}</p>
+    </div>
+    <div class="reader-sec">
+      <span class="reader-sec-label">例子</span>
+      <p class="reader-example">${esc(e.example)}</p>
+    </div>
+
+    <div class="reader-actions">
+      <button class="go" onclick="train('${esc(e.title)}')">用它练一次</button>
+      <button onclick="alert('编辑：${esc(e.title)}')">编辑这个词条</button>
+      <button onclick="alert('查看引用记录')">被引用 2 次</button>
+    </div>
+  `;
+
+  dots.innerHTML = list.map((_,i)=>`<i class="${i===readerIndex?"on":""}" data-i="${i}"></i>`).join("");
+  document.getElementById("pnum").textContent = `${readerIndex+1} / ${list.length}`;
+  document.getElementById("prev").disabled = readerIndex === 0;
+  document.getElementById("next").disabled = readerIndex === list.length-1;
+}
+
+dots.addEventListener("click", e=>{
+  const i = e.target.closest("i");
+  if(!i) return;
+  readerIndex = +i.dataset.i;
+  renderReader();
+});
+
+function step(d){
+  const list = visible();
+  const n = readerIndex + d;
+  if(n < 0 || n >= list.length) return;
+  readerIndex = n;
+  // 翻页动画：先退场再入场
+  rcard.style.animation = "none";
+  void rcard.offsetWidth;
+  rcard.style.animation = "";
+  renderReader();
+}
+
+/* ============================================================
+   视图切换
+   ============================================================ */
+function setView(v, fromNote){
+  view = v;
+  document.getElementById("vs-card").classList.toggle("on", v === "card");
+  document.getElementById("vs-reader").classList.toggle("on", v === "reader");
+  document.getElementById("board").style.display = v === "card" ? "" : "none";
+  document.getElementById("reader").classList.toggle("on", v === "reader");
+  // 从便签点进来时，显示一条返回便签墙的路径
+  document.getElementById("backbar").style.display = (v === "reader" && fromNote) ? "flex" : "none";
+  if(v === "reader") renderReader();
+  if(!fromNote) location.hash = v;
+}
+
+/* ============================================================
+   筛选 + 检索
+   ============================================================ */
+const filtersEl = document.getElementById("filters");
+filtersEl.innerHTML = DOMAINS.map(([n,c])=>
+  `<button${n===activeDomain?' class="on"':''} data-d="${n}">${n}<span class="count">${c}</span></button>`
+).join("");
+filtersEl.addEventListener("click", e=>{
+  const b = e.target.closest("button[data-d]");
+  if(!b) return;
+  activeDomain = b.dataset.d;
+  filtersEl.querySelectorAll("button").forEach(x=>x.classList.toggle("on", x===b));
+  refresh();
+});
+
+const q = document.getElementById("q");
+let qt;
+q.addEventListener("input", ()=>{
+  clearTimeout(qt);
+  qt = setTimeout(()=>{ keyword = q.value.trim(); refresh(); }, 130);
+});
+
+function updateHint(n){
+  document.getElementById("qhint").textContent = n === ENTRIES.length
+    ? `${ENTRIES.length} 条中检索`
+    : `显示 ${n} / ${ENTRIES.length}`;
+}
+
+function refresh(){
+  renderWall();
+  if(view === "reader") renderReader();
+}
+
+/* ============================================================
+   键盘
+   ============================================================ */
+// e.target 可能是 document / body（没有 .closest），所以要防御
+const inField = e => {
+  const t = e.target;
+  return !!(t && typeof t.closest === "function" && t.closest("input,textarea,select"));
+};
+addEventListener("keydown", e=>{
+  const inInput = document.activeElement === q;
+  if(e.key === "?" && !inInput && !inField(e)){
+    e.preventDefault();
+    const hb = document.querySelector('.hintbar');
+    if(hb) hb.classList.toggle('show');
+    return;
+  }
+  if(e.key === "Escape"){
+    const hb = document.querySelector('.hintbar');
+    if(hb && hb.classList.contains('show')){ hb.classList.remove('show'); return; }
+  }
+  if(e.key === "/" && !inInput){ e.preventDefault(); q.focus(); q.select(); return; }
+  if(e.key === "Escape" && inInput){ q.value=""; keyword=""; refresh(); q.blur(); return; }
+  if(inInput) return;
+
+  if(e.key === " " && !inField(e)){
+    e.preventDefault(); setView(view === "card" ? "reader" : "card"); return;
+  }
+  if(view === "reader"){
+    if(e.key === "ArrowRight"){ e.preventDefault(); step(1); }
+    if(e.key === "ArrowLeft"){ e.preventDefault(); step(-1); }
+  }
+});
+
+function train(t){ alert(`以「${t}」为主题开始训练`); }
+
+/* ============================================================
+   侧栏折叠 / 展开（07 是自包含文件，逻辑写在这里）
+   ============================================================ */
+(function(){
+  const rail = document.querySelector(".rail");
+  const btn = rail.querySelector(".rail-toggle");
+  const KEY = "pm-rail-open";
+
+  function apply(open, animate){
+    if(!animate){
+      rail.style.transition = "none";
+      document.body.style.transition = "none";
+      document.body.style.transition = "none";
+    }
+    rail.classList.toggle("open", open);
+    document.body.classList.toggle("rail-open", open);
+    document.body.classList.toggle("rail-open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.title = open ? "收起侧栏（[）" : "展开侧栏（[）";
+    if(!animate){
+      void rail.offsetWidth;
+      rail.style.transition = "";
+      document.body.style.transition = "";
+    }
+  }
+
+  let saved = null;
+  try { saved = localStorage.getItem(KEY); } catch(e){}
+  apply(saved === "1", false);
+
+  function toggle(){
+    const open = !rail.classList.contains("open");
+    apply(open, true);
+    try { localStorage.setItem(KEY, open ? "1" : "0"); } catch(e){}
+  }
+
+  btn.addEventListener("click", toggle);
+  document.addEventListener("keydown", e=>{
+    if(e.key === "[" && !inField(e)){
+      e.preventDefault(); toggle();
+    }
+  });
+  rail.addEventListener("transitionend", e=>{
+    if(e.propertyName === "width") window.dispatchEvent(new Event("resize"));
+  });
+})();
+
+/* 初始：先算好角度，再渲染。支持 #reader 直接进阅读视图 */
+TILTS = assignTilts(ENTRIES);
+if(location.hash === "#reader"){ setView("reader"); } else { renderWall(); renderReader(); }
+</script>
+</body>
+</html>

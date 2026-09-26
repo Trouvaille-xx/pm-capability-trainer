@@ -1,4 +1,4 @@
-import { handle, ok, optionalString, readBody, requireString } from "@/lib/api";
+import { assertSameOrigin, handle, ok, readBody, requireString } from "@/lib/api";
 import { newId, nowIso, readCollection, upsert } from "@/lib/store";
 import type { PromptScope, PromptTemplate } from "@/lib/types";
 
@@ -25,6 +25,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   return handle(async () => {
+    assertSameOrigin(request);
     const body = await readBody<PromptTemplate>(request);
     const scope = SCOPES.includes(body.scope as PromptScope)
       ? (body.scope as PromptScope)

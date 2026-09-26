@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>记录总结 · 能力训练平台</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+/* 记录总结的专属：摘录的三种状态用文字标签筛选，不是彩色胶囊 */
+.statline{
+  max-width:1360px;margin:0 auto;padding:22px 40px 0;position:relative;z-index:1;
+  display:flex;gap:26px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-3);
+  border-bottom:1px solid rgba(17,17,17,.08);padding-bottom:16px;
+}
+.statline b{color:var(--ink);font-weight:600}
+.statline .sep{color:var(--ink-4)}
+</style>
+</head>
+<body>
+
+<nav class="rail" aria-label="主导航">
+  <a class="rail-brand" href="08-overview.html">
+    <span class="rail-mark"></span>
+    <span class="rail-name">能力训练平台</span>
+  </a>
+  <div class="rail-nav">
+    <a class="rail-tab" href="08-overview.html"><span class="lbl">概览</span></a>
+    <span class="rail-tab here" aria-current="page"><span class="lbl">记录总结</span><span class="cnt">0</span></span>
+    <a class="rail-tab" href="07-board.html"><span class="lbl">方法论</span><span class="cnt">21</span></a>
+    <a class="rail-tab" href="10-trainer.html"><span class="lbl">AI 训练师</span><span class="cnt">2</span></a>
+    <a class="rail-tab" href="11-settings.html"><span class="lbl">辅助系统</span></a>
+  </div>
+  <div class="rail-foot">
+    <button class="rail-btn rail-toggle" aria-expanded="false" title="展开侧栏（[）">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <span class="lbl">收起</span>
+    </button>
+    <button class="rail-btn" title="搜索（⌘K）" onclick="window.boardToast ? boardToast('搜索（⌘K）') : alert('搜索（⌘K）')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span class="lbl">搜索</span>
+    </button>
+    <button class="rail-btn" title="回到顶部" onclick="scrollTo({top:0,behavior:'smooth'})">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+      <span class="lbl">回到顶部</span>
+    </button>
+  </div>
+</nav>
+    <div class="viewswitch">
+      <button class="vs-btn on" id="vs-card" onclick="setView('card')">便签墙</button>
+      <button class="vs-btn" id="vs-reader" onclick="setView('reader')">逐条阅读</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="lookup">
+      <input id="q" placeholder="在摘录里查…" autocomplete="off">
+      <span class="lookup-hint" id="qhint">0 张中检索</span>
+    </div>
+    <div class="filters" id="filters">
+      <button class="on" data-f="全部">全部<span class="count">0</span></button>
+      <button data-f="书">书<span class="count">0</span></button>
+      <button data-f="文章">文章<span class="count">0</span></button>
+      <button data-f="笔记">笔记<span class="count">0</span></button>
+      <button data-f="待整理">待整理<span class="count">0</span></button>
+    </div>
+  </div>
+</header>
+
+<div class="statline">
+  <span>摘录状态</span>
+  <span class="sep">·</span>
+  <span><b>0</b> 待整理</span>
+  <span><b>0</b> 整理中</span>
+  <span><b>0</b> 已消化</span>
+  <span class="sep">·</span>
+  <span>从摘录里可以一键提取知识点，进入方法论库</span>
+</div>
+
+<!-- 空板：这才是它现在的真实状态 -->
+<section class="board" id="boardEl">
+  <div class="wall" id="wall">
+    <div class="empty-board">
+      <h3>这块板还是空的</h3>
+      <p>
+        读到一段话、看到一个例子、脑子里闪过一个念头 —— 都可以钉在这里。<br>
+        定好标题，写下原文，再写一句「我从中想到了什么」。<br>
+        攒够几张之后，可以把它们提炼成方法论词条。
+      </p>
+      <div class="hint-actions">
+        <button class="go" onclick="boardToast('新建摘录')">钉第一张便签</button>
+        <button onclick="boardToast('从链接导入')">从链接导入</button>
+        <button onclick="boardLoc('07-board.html')">先去看看方法论</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="colophon">
+  <span>
+    <b>记录总结</b> · 0 条摘录<br>
+    书 0 · 文章 0 · 笔记 0 · 待整理 0<br>
+    已关联方法论 0 条
+  </span>
+  <span style="text-align:right">
+    摘录 → 方法论 的路径：<br>
+    钉下原文 → 写下思考 → 提炼成词条<br>
+    最近更新 —
+  </span>
+</footer>
+
+<!-- 详情（空态下不显示，结构留好） -->
+<section class="reader" id="reader">
+  <div class="backbar" id="backbar">
+    <button onclick="setView('card')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      回到便签墙
+    </button>
+  </div>
+  <div class="reader-card" id="rcard"></div>
+  <div class="pager">
+    <button class="pager-btn" id="prev" onclick="step(-1)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      上一个
+    </button>
+    <div class="pager-mid"><div class="dots" id="dots"></div><span id="pnum"></span></div>
+    <button class="pager-btn" id="next" onclick="step(1)">
+      下一个
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="_shared.js"></script>
+<script>initRail();</script>
+<script>
+/* ============================================================
+   记录总结的真实数据是空的（data/captures.json 里 0 条）。
+   所以默认就显示那张空板 —— 这是当前真实状态，不是占位符。
+
+   想看「有内容时长什么样」，在控制台执行：__demo()
+   ============================================================ */
+const DEMO = [
+  {
+    id:"cap_demo_01", kind:"capture", category:"书",
+    eyebrow:"书 · 已消化",
+    title:"《思考，快与慢》第 27 章",
+    lead:"「损失厌恶」这个概念最早的系统性实验来源。",
+    detail:"卡尼曼和特沃斯基的展望理论：人在收益框架下规避风险，在损失框架下反而冒险。这一章给出了经典的前景理论曲线，以及那个著名的「抛硬币」实验——赢 150 或输 100，大多数人拒绝。",
+    points:[
+      "损失和收益的价值函数不对称，损失侧更陡",
+      "参照点决定你此刻是「收益框架」还是「损失框架」",
+      "框架效应：换个说法就能翻转决策"
+    ],
+    thoughts:"读到这里我才意识到，我平时做续费页时用的「立减 10 元」根本不在损失框架里。真正有效的是把用户已有的东西设成参照点，然后告诉他「你要失去了」。这跟我方法论库里那张卡对上了。",
+    rating:5,
+    tags:["心理学","决策","定价"],
+    foot:"书", flagged:true,
+    meta:[["类型","书"],["作者","丹尼尔·卡尼曼"],["来源","第 27 章"],["状态","已消化"],["关联词条","损失厌恶、锚定效应"]],
+    actions:[{t:"提炼成词条",go:true}]
+  },
+  {
+    id:"cap_demo_02", kind:"capture", category:"文章",
+    eyebrow:"文章 · 整理中",
+    title:"Linear 的产品哲学",
+    lead:"一家把「快」做成产品核心的公司，怎么设计信息密度。",
+    detail:"文章讲 Linear 如何用键盘优先、乐观更新和极低的界面延迟来制造「快」的体感。有意思的是他们对动画的态度：不是加动效，而是把每一帧的等待时间压到感知阈值以下。",
+    points:[
+      "延迟 100ms 以内感觉是「即时」，超过 1s 会打断思考",
+      "乐观更新让界面不等服务器，失败再回滚",
+      "键盘优先不是为了极客，是为了减少手在鼠标和键盘之间的移动成本"
+    ],
+    thoughts:"这解释了为什么我之前做的那些 hover 动效让人不舒服 —— 我是在「加动效」，而正确的做法是「减等待」。体感上的快不来自动画，来自没有动画也能立刻看到结果。",
+    rating:4,
+    tags:["产品设计","交互","性能"],
+    foot:"文章",
+    meta:[["类型","文章"],["来源","线性产品博客"],["状态","整理中"]],
+    actions:[{t:"提炼成词条",go:true}]
+  }
+];
+
+/* 数据为空：不启动便签渲染，空的板就是它的真实样子。
+   检索和键盘仍然可用（此时没有条目可搜）。 */
+document.getElementById("qhint").textContent = "0 张中检索";
+
+/* 想看有内容的样子：控制台执行 __demo()
+   initBoard 会接管 .wall 和 #reader，所以只调一次。 */
+let demoLoaded = false;
+window.__demo = function(){
+  if(demoLoaded){ boardToast("示例已经载入了"); return; }
+  demoLoaded = true;
+  initBoard(DEMO, {});
+  boardToast("已载入 " + DEMO.length + " 张示例便签");
+};
+</script>
+</body>
+</html>

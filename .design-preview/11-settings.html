@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>辅助系统 · 能力训练平台</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+/* ============================================================
+   辅助系统（设置）
+   ------------------------------------------------------------
+   这一页是"工具"，不是内容。所以：
+   - 不用便签墙，改用印刷品的填表版式（下划线输入，不是圆角框）
+   - 左侧一条极窄的章节索引（纯文字，像书的目录）
+   - 右侧是表单
+   ============================================================ */
+.setwrap{
+  max-width:1120px;margin:0 auto;padding:40px 40px 90px;
+  display:grid;grid-template-columns:186px 1fr;gap:64px;
+  position:relative;z-index:1;
+}
+@media (max-width:900px){ .setwrap{grid-template-columns:1fr;gap:32px} }
+
+/* 章节索引：像书的目录，纯文字 */
+.toc{position:sticky;top:82px;align-self:start}
+.toc-label{
+  font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  letter-spacing:.1em;margin-bottom:14px;
+}
+.toc a{
+  display:block;font-size:13.5px;color:var(--ink-3);text-decoration:none;
+  padding:5px 0;transition:color .18s;border-bottom:1px solid transparent;
+  width:fit-content;
+}
+.toc a:hover{color:var(--ink-2)}
+.toc a.on{color:var(--ink);font-weight:600}
+.toc a.on::before{content:"— ";color:var(--mark)}
+
+.section{margin-bottom:56px;scroll-margin-top:82px}
+.section:last-child{margin-bottom:0}
+.section-head{
+  padding-bottom:13px;border-bottom:2px solid var(--ink);margin-bottom:6px;
+  display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap;
+}
+.section-title{font-family:var(--serif);font-size:23px;font-weight:600}
+.section-note{font-size:12px;color:var(--ink-4);font-family:var(--mono)}
+
+/* 表单行 */
+.field{padding:22px 0;border-bottom:1px solid rgba(17,17,17,.08)}
+.field:last-child{border-bottom:0}
+.field-label{
+  font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  letter-spacing:.1em;display:block;margin-bottom:10px;
+}
+.field-label .req{color:var(--mark)}
+.field-input,.field-textarea,.field-select{
+  width:100%;border:0;border-bottom:1px solid var(--rule);outline:0;
+  background:transparent;font-family:var(--sans);font-size:15px;
+  color:var(--ink);padding:7px 0;transition:border-color .2s;
+}
+.field-input:focus,.field-textarea:focus,.field-select:focus{border-bottom-color:var(--ink)}
+.field-textarea{resize:vertical;min-height:92px;line-height:1.85;font-size:14px}
+.field-select{cursor:pointer;appearance:none;background-image:none}
+.field-hint{font-size:12px;color:var(--ink-4);margin-top:9px;line-height:1.75}
+
+/* 开关：像书的批注，不用彩色 toggle */
+.switch-row{
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  padding:16px 0;border-bottom:1px solid rgba(17,17,17,.08);
+}
+.switch-row:last-child{border-bottom:0}
+.switch-text{font-size:14px;color:var(--ink-2);line-height:1.7}
+.switch-sub{font-size:12px;color:var(--ink-4);margin-top:3px}
+.switch{
+  width:38px;height:20px;border:1px solid rgba(17,17,17,.2);background:transparent;
+  position:relative;cursor:pointer;flex:none;transition:all .22s var(--ease);
+}
+.switch::after{
+  content:"";position:absolute;top:1px;left:1px;width:16px;height:16px;
+  background:var(--ink-4);transition:all .22s var(--spring);
+}
+.switch.on{border-color:var(--ink);background:var(--ink)}
+.switch.on::after{left:19px;background:var(--paper)}
+
+/* 状态标记：文字，不是彩色胶囊 */
+.status{
+  font-family:var(--mono);font-size:10.5px;display:flex;align-items:center;gap:7px;
+  color:var(--ink-3);
+}
+.status::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--good)}
+.status.bad::before{background:var(--mark)}
+
+.actions{display:flex;gap:24px;align-items:center;margin-top:28px;flex-wrap:wrap}
+.actions button{
+  background:none;border:0;font-family:inherit;font-size:13.5px;cursor:pointer;
+  color:var(--ink-3);border-bottom:1px solid transparent;transition:all .18s;padding:0;
+}
+.actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.actions button.go{color:var(--mark);font-weight:600}
+.actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* 提示词模板列表：像书的附录 */
+.tpl{
+  display:flex;align-items:baseline;justify-content:space-between;gap:20px;
+  padding:14px 0;border-bottom:1px solid rgba(17,17,17,.08);cursor:pointer;
+  transition:padding-left .2s var(--ease);
+}
+.tpl:hover{padding-left:6px}
+.tpl:last-child{border-bottom:0}
+.tpl-t{font-size:14.5px;color:var(--ink-2)}
+.tpl:hover .tpl-t{color:var(--mark)}
+.tpl-m{font-family:var(--mono);font-size:10.5px;color:var(--ink-4);white-space:nowrap}
+</style>
+</head>
+<body>
+
+<nav class="rail" aria-label="主导航">
+  <a class="rail-brand" href="08-overview.html">
+    <span class="rail-mark"></span>
+    <span class="rail-name">能力训练平台</span>
+  </a>
+  <div class="rail-nav">
+    <a class="rail-tab" href="08-overview.html"><span class="lbl">概览</span></a>
+    <a class="rail-tab" href="09-captures.html"><span class="lbl">记录总结</span><span class="cnt">0</span></a>
+    <a class="rail-tab" href="07-board.html"><span class="lbl">方法论</span><span class="cnt">21</span></a>
+    <a class="rail-tab" href="10-trainer.html"><span class="lbl">AI 训练师</span><span class="cnt">2</span></a>
+    <span class="rail-tab here" aria-current="page"><span class="lbl">辅助系统</span></span>
+  </div>
+  <div class="rail-foot">
+    <button class="rail-btn rail-toggle" aria-expanded="false" title="展开侧栏（[）">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <span class="lbl">收起</span>
+    </button>
+    <button class="rail-btn" title="搜索（⌘K）" onclick="window.boardToast ? boardToast('搜索（⌘K）') : alert('搜索（⌘K）')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span class="lbl">搜索</span>
+    </button>
+    <button class="rail-btn" title="回到顶部" onclick="scrollTo({top:0,behavior:'smooth'})">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+      <span class="lbl">回到顶部</span>
+    </button>
+  </div>
+</nav>
+  </div>
+</header>
+
+<div class="setwrap">
+
+  <!-- 章节索引 -->
+  <nav class="toc">
+    <div class="toc-label">章节</div>
+    <a class="on" href="#ai">AI 配置</a>
+    <a href="#prompt">提示词管理</a>
+    <a href="#search">联网搜索</a>
+    <a href="#mcp">MCP 服务</a>
+    <a href="#data">数据与备份</a>
+  </nav>
+
+  <div>
+
+    <!-- AI 配置 -->
+    <section class="section" id="ai">
+      <div class="section-head">
+        <span class="section-title">AI 配置</span>
+        <span class="section-note">当前可用</span>
+      </div>
+
+      <div class="field">
+        <span class="field-label">接口地址 <span class="req">*</span></span>
+        <input class="field-input" value="https://opencode.ai/zen/go/v1">
+        <div class="field-hint">兼容 OpenAI 格式的接口地址。末尾不要带 /chat/completions。</div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">API Key <span class="req">*</span></span>
+        <input class="field-input" type="password" value="sk-X5AM7jDwW9rb9ayljnGEgqnjuaW5ekW8T58Etz7QJbVju8xsJviqsgj1ACgp42T9">
+        <div class="field-hint">只保存在本地 data/settings.json，不会上传到任何地方。</div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">模型</span>
+        <input class="field-input" value="deepseek-flash">
+        <div class="field-hint">填写接口实际支持的模型标识。</div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">温度</span>
+        <input class="field-input" value="0.6">
+      </div>
+
+      <div class="field">
+        <span class="field-label">最大输出长度</span>
+        <input class="field-input" value="30000">
+      </div>
+
+      <div class="field">
+        <span class="field-label">公司名称（提示词里的 {company_name}）</span>
+        <input class="field-input" placeholder="默认为「本公司」">
+      </div>
+
+      <div class="actions">
+        <button class="go" onclick="boardToast('连接测试通过：可用')">测试连接</button>
+        <button onclick="boardToast('已保存')">保存</button>
+        <span class="status">上次测试：可用</span>
+      </div>
+    </section>
+
+    <!-- 提示词管理 -->
+    <section class="section" id="prompt">
+      <div class="section-head">
+        <span class="section-title">提示词管理</span>
+        <span class="section-note">4 个场景 · 4 个模式 · 报告 · 对话</span>
+      </div>
+
+      <div class="tpl" onclick="boardToast('编辑：产品拆解场景块')">
+        <span class="tpl-t">产品拆解 · 场景块</span>
+        <span class="tpl-m">含 8 步流程定义</span>
+      </div>
+      <div class="tpl" onclick="boardToast('编辑：需求调研场景块')">
+        <span class="tpl-t">需求调研 · 场景块</span>
+        <span class="tpl-m">自由对话</span>
+      </div>
+      <div class="tpl" onclick="boardToast('编辑：流程设计场景块')">
+        <span class="tpl-t">流程设计 · 场景块</span>
+        <span class="tpl-m">自由对话</span>
+      </div>
+      <div class="tpl" onclick="boardToast('编辑：AI 助教引导模式块')">
+        <span class="tpl-t">AI 助教引导 · 模式块</span>
+        <span class="tpl-m">追问式</span>
+      </div>
+      <div class="tpl" onclick="boardToast('编辑：评分报告块')">
+        <span class="tpl-t">训练报告 · 评分块</span>
+        <span class="tpl-m">含评分维度</span>
+      </div>
+      <div class="tpl" onclick="boardToast('编辑：公共规则')">
+        <span class="tpl-t">公共规则</span>
+        <span class="tpl-m">所有场景共用</span>
+      </div>
+
+      <div class="actions">
+        <button onclick="boardToast('已恢复默认提示词')">恢复默认</button>
+      </div>
+    </section>
+
+    <!-- 联网搜索 -->
+    <section class="section" id="search">
+      <div class="section-head">
+        <span class="section-title">联网搜索</span>
+        <span class="section-note">未启用</span>
+      </div>
+
+      <div class="switch-row">
+        <div>
+          <div class="switch-text">让训练师可以联网查资料</div>
+          <div class="switch-sub">开启后，训练师会在需要时搜索，并在对话里留痕</div>
+        </div>
+        <div class="switch" onclick="this.classList.toggle('on');boardToast('已切换联网搜索')"></div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">搜索服务商</span>
+        <select class="field-select">
+          <option>Bing</option>
+          <option>Google</option>
+          <option>Serper</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <span class="field-label">API Key</span>
+        <input class="field-input" placeholder="填入搜索服务的 Key">
+      </div>
+
+      <div class="field">
+        <span class="field-label">每次最多取几条</span>
+        <input class="field-input" value="5">
+      </div>
+    </section>
+
+    <!-- MCP -->
+    <section class="section" id="mcp">
+      <div class="section-head">
+        <span class="section-title">MCP 服务</span>
+        <span class="section-note">0 个</span>
+      </div>
+
+      <div class="empty-board" style="padding:44px 30px">
+        <h3>还没有挂载 MCP 服务</h3>
+        <p>挂载后，训练师可以调用这些工具去查资料、读文件、访问你的其他系统。</p>
+        <div class="hint-actions">
+          <button class="go" onclick="boardToast('添加 MCP 服务')">添加一个服务</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 数据 -->
+    <section class="section" id="data">
+      <div class="section-head">
+        <span class="section-title">数据与备份</span>
+        <span class="section-note">data/ 目录</span>
+      </div>
+
+      <div class="switch-row">
+        <div>
+          <div class="switch-text">方法论词条（21 条）</div>
+          <div class="switch-sub">data/methodology.json</div>
+        </div>
+        <span class="status">正常</span>
+      </div>
+      <div class="switch-row">
+        <div>
+          <div class="switch-text">训练场次（2 场）</div>
+          <div class="switch-sub">data/sessions.json</div>
+        </div>
+        <span class="status">正常</span>
+      </div>
+      <div class="switch-row">
+        <div>
+          <div class="switch-text">记录总结（0 条）</div>
+          <div class="switch-sub">data/captures.json · 尚未创建</div>
+        </div>
+        <span class="status bad">空</span>
+      </div>
+      <div class="switch-row">
+        <div>
+          <div class="switch-text">提示词模板</div>
+          <div class="switch-sub">data/prompts.json</div>
+        </div>
+        <span class="status">正常</span>
+      </div>
+
+      <div class="actions">
+        <button onclick="boardToast('已导出备份')">导出全部数据</button>
+        <button onclick="boardToast('选择备份文件')">从备份恢复</button>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<footer class="colophon">
+  <span>
+    <b>辅助系统</b> · 模型配置 · 提示词 · 联网搜索 · MCP<br>
+    所有数据保存在本地 data/ 目录<br>
+    接口地址与 Key 只存在本机
+  </span>
+  <span style="text-align:right">
+    当前模型 <b>deepseek-flash</b><br>
+    接口 opencode.ai/zen/go/v1<br>
+    上次连接测试：可用
+  </span>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="_shared.js"></script>
+<script>
+/* 章节索引跟随滚动高亮 */
+initRail();
+
+const sections = [...document.querySelectorAll(".section")];
+const links = [...document.querySelectorAll(".toc a")];
+const io = new IntersectionObserver(es=>{
+  es.forEach(e=>{
+    if(!e.isIntersecting) return;
+    const id = e.target.id;
+    links.forEach(a=>a.classList.toggle("on", a.getAttribute("href") === "#" + id));
+  });
+}, {rootMargin:"-80px 0px -70% 0px"});
+sections.forEach(s=>io.observe(s));
+
+/* 索引点击平滑滚动 */
+links.forEach(a=>{
+  a.addEventListener("click", e=>{
+    e.preventDefault();
+    const el = document.querySelector(a.getAttribute("href"));
+    if(el) el.scrollIntoView({behavior:"smooth", block:"start"});
+  });
+});
+</script>
+</body>
+</html>

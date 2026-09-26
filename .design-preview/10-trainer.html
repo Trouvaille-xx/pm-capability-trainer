@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AI 训练师 · 能力训练平台</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+/* ============================================================
+   AI 训练师
+   ------------------------------------------------------------
+   这一页有两种状态，用视图切换表达：
+   1. 便签墙 —— 所有训练场次，每场一张便签（含进度）
+   2. 逐条阅读 —— 进入某一场训练：上方是 8 步胶囊条，
+      下方是完整对话与输入框（真正的操作区）
+   ============================================================ */
+
+/* 开场：一个"新训练"的告示 */
+.launch{
+  max-width:1360px;margin:0 auto;padding:26px 40px 0;position:relative;z-index:1;
+}
+.launch-in{
+  display:flex;align-items:baseline;justify-content:space-between;gap:26px;flex-wrap:wrap;
+  padding:20px 0;border-bottom:1px solid var(--rule);
+}
+.launch-t{font-family:var(--serif);font-size:22px;font-weight:600;line-height:1.4}
+.launch-d{font-size:13px;color:var(--ink-3);margin-top:4px;line-height:1.8}
+.launch-actions{display:flex;gap:22px;font-size:13px;flex:none;align-items:baseline}
+.launch-actions button{
+  background:none;border:0;font-family:inherit;font-size:13px;cursor:pointer;
+  color:var(--ink-3);border-bottom:1px solid transparent;transition:all .18s;padding:0;
+}
+.launch-actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.launch-actions button.go{color:var(--mark);font-weight:600}
+.launch-actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* 场景选择：三个入口，用文字列，不是三张卡片 */
+.scenarios{
+  max-width:1360px;margin:0 auto;padding:18px 40px 0;position:relative;z-index:1;
+  display:flex;gap:0;flex-wrap:wrap;border-bottom:1px solid rgba(17,17,17,.08);
+}
+.sc{
+  flex:1;min-width:240px;padding:18px 26px 20px;
+  border-left:1px solid rgba(17,17,17,.1);cursor:pointer;
+  transition:background .2s var(--ease);
+}
+.sc:first-child{border-left:0;padding-left:0}
+.sc:hover{background:rgba(255,255,255,.6)}
+.sc-n{font-family:var(--mono);font-size:10px;color:var(--mark);letter-spacing:.08em;display:block;margin-bottom:8px}
+.sc-t{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.4;margin-bottom:5px}
+.sc-d{font-size:12.5px;color:var(--ink-3);line-height:1.75}
+.sc-m{font-family:var(--mono);font-size:10.5px;color:var(--ink-4);margin-top:10px}
+
+/* ============================================================
+   训练会话：这是真正的操作区（进详情后）
+   ============================================================ */
+.session{display:none}
+.session.on{display:block}
+
+/* 8 步胶囊条：横在对话上方 */
+.stepbar{
+  max-width:820px;margin:0 auto;padding:20px 40px 0;position:relative;z-index:1;
+  display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+}
+.stepbar::-webkit-scrollbar{display:none}
+.sp{
+  display:flex;align-items:center;gap:6px;padding:3px 11px;
+  border-radius:100px;font-size:11.5px;color:var(--ink-4);white-space:nowrap;
+  cursor:pointer;border:1px solid transparent;transition:all .2s;
+  font-family:inherit;background:none;
+}
+.sp:hover{background:rgba(255,255,255,.8);color:var(--ink-3)}
+.sp .n{
+  width:15px;height:15px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--mono);font-size:9px;font-weight:700;
+  background:rgba(17,17,17,.07);color:var(--ink-4);
+}
+.sp.done{color:var(--ink-3)}
+.sp.done .n{background:rgba(47,107,74,.16);color:var(--good)}
+.sp.on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+.sp.on .n{background:rgba(255,255,255,.24);color:#fff}
+.sp-line{width:10px;height:1px;background:rgba(17,17,17,.14);flex:none}
+
+/* 会话正文 */
+.sheet{
+  max-width:820px;margin:0 auto;padding:30px 40px 120px;position:relative;z-index:1;
+}
+.sheet-head{
+  padding-bottom:22px;border-bottom:1px solid var(--rule);margin-bottom:26px;
+}
+.sheet-domain{
+  font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  letter-spacing:.1em;margin-bottom:10px;display:flex;gap:12px;flex-wrap:wrap;
+}
+.sheet-title{
+  font-family:var(--serif);font-size:31px;font-weight:600;
+  line-height:1.25;letter-spacing:.01em;margin-bottom:9px;
+}
+.sheet-sub{font-size:13.5px;color:var(--ink-3);line-height:1.8}
+.sheet-actions{margin-top:18px;display:flex;gap:22px;font-size:13px;flex-wrap:wrap}
+.sheet-actions button{
+  background:none;border:0;font-family:inherit;font-size:13px;cursor:pointer;
+  color:var(--ink-3);border-bottom:1px solid transparent;transition:all .18s;padding:0;
+}
+.sheet-actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.sheet-actions button.go{color:var(--mark);font-weight:600}
+.sheet-actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* ---- 对话 ---- */
+.turns{display:flex;flex-direction:column;gap:30px}
+.turn{position:relative}
+.turn-role{
+  font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  letter-spacing:.1em;margin-bottom:9px;display:flex;align-items:center;gap:10px;
+}
+.turn-role .t{color:var(--ink-4);font-family:var(--mono);font-size:9.5px}
+.turn-role .tag{color:var(--mark);font-weight:600;letter-spacing:.04em}
+
+.turn-user .turn-body{
+  background:var(--paper);border:1px solid rgba(17,17,17,.09);
+  padding:16px 19px;font-size:15px;line-height:1.85;color:var(--ink);
+  box-shadow:0 1px 2px rgba(17,17,17,.04);
+}
+.turn-ai .turn-body{
+  padding-left:19px;border-left:2px solid var(--mark);
+  font-size:15px;line-height:1.92;color:var(--ink-2);
+}
+.turn-ai .turn-body strong{color:var(--ink);font-weight:600}
+.turn-ai .turn-body em{font-style:normal;background:rgba(192,57,43,.09);padding:1px 3px}
+.turn-ai .turn-body ul{margin:10px 0 0 0;padding-left:18px}
+.turn-ai .turn-body li{margin-bottom:5px}
+.turn-ai .turn-body code{
+  font-family:var(--mono);font-size:13px;background:var(--board-2);
+  padding:1.5px 5px;color:var(--ink);
+}
+
+/* 交付物：AI 产出的卡片，贴在对话里 */
+.artifact{
+  margin-top:16px;border:1px solid rgba(17,17,17,.11);background:var(--paper);
+  position:relative;
+}
+.artifact::after{
+  content:"";position:absolute;top:0;right:0;width:16px;height:16px;
+  background:linear-gradient(225deg,var(--board) 48%,rgba(17,17,17,.055) 50%,transparent 52%);
+}
+.artifact-head{
+  padding:9px 15px;border-bottom:1px solid var(--rule);
+  display:flex;align-items:center;gap:9px;
+  font-family:var(--mono);font-size:10px;color:var(--ink-3);letter-spacing:.06em;
+}
+.artifact-head .ok{margin-left:auto;color:var(--good);display:flex;align-items:center;gap:5px}
+.artifact-body{padding:15px}
+.afield{
+  display:grid;grid-template-columns:82px 1fr;gap:14px;
+  padding:7px 0;border-bottom:1px solid var(--rule-2);font-size:14px;
+}
+.afield:last-child{border-bottom:0}
+.afield-k{font-family:var(--mono);font-size:10px;color:var(--ink-4);letter-spacing:.06em;padding-top:5px}
+.afield-v{color:var(--ink-2);line-height:1.8}
+.afield-v.todo{color:var(--ink-4);font-style:italic}
+
+/* 工具轨迹 */
+.turn-tools{margin-top:13px;display:flex;flex-direction:column;gap:5px}
+.turn-tool{
+  font-family:var(--mono);font-size:10.5px;color:var(--ink-3);
+  padding:6px 10px;background:var(--board-2);display:flex;gap:10px;align-items:baseline;
+}
+.turn-tool .st{color:var(--good);font-weight:700}
+.turn-tool .nm{color:var(--ink-2)}
+.turn-tool .rs{color:var(--ink-4);margin-left:auto;text-align:right}
+
+/* 建议：一行文字按钮，不是彩色胶囊 */
+.suggestions{margin-top:18px;display:flex;flex-direction:column;gap:9px}
+.sug{
+  background:none;border:0;font-family:inherit;font-size:13.5px;
+  color:var(--ink-3);cursor:pointer;text-align:left;padding:0;
+  border-bottom:1px solid transparent;transition:all .18s;
+  display:flex;align-items:baseline;gap:9px;
+}
+.sug::before{content:"→";color:var(--mark);font-size:12px}
+.sug:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+
+/* ---- 输入区 ---- */
+.composer{
+  position:sticky;bottom:0;background:linear-gradient(to top,var(--board) 72%,transparent);
+  padding:22px 0 0;margin-top:36px;
+}
+.composer-box{
+  border:1px solid rgba(17,17,17,.14);background:var(--paper);
+  padding:15px 17px;transition:border-color .22s var(--ease),box-shadow .22s var(--ease);
+  box-shadow:0 1px 2px rgba(17,17,17,.04);
+}
+.composer-box:focus-within{
+  border-color:var(--ink);
+  box-shadow:0 0 0 3px rgba(17,17,17,.05),0 8px 26px -14px rgba(17,17,17,.3);
+}
+.composer textarea{
+  width:100%;border:0;outline:0;resize:none;background:transparent;
+  font-family:var(--sans);font-size:15px;line-height:1.8;color:var(--ink);
+  min-height:52px;max-height:200px;
+}
+.composer textarea::placeholder{color:var(--ink-4);font-style:italic}
+.composer-foot{display:flex;align-items:center;gap:11px;margin-top:12px;flex-wrap:wrap}
+.cf-btn{
+  background:none;border:0;font-family:inherit;font-size:12px;color:var(--ink-4);
+  cursor:pointer;padding:0;border-bottom:1px solid transparent;transition:all .18s;
+  display:flex;align-items:center;gap:6px;
+}
+.cf-btn:hover{color:var(--ink-2);border-bottom-color:var(--ink-4)}
+.send{
+  margin-left:auto;background:var(--ink);color:#fff;border:0;
+  font-family:inherit;font-size:12.5px;font-weight:600;
+  padding:8px 18px;cursor:pointer;transition:all .2s var(--spring);
+}
+.send:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 18px -8px rgba(17,17,17,.6)}
+.send:disabled{background:rgba(17,17,17,.14);color:var(--ink-4);cursor:not-allowed}
+.composer-hint{
+  margin-top:10px;font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  display:flex;gap:14px;flex-wrap:wrap;
+}
+.composer-hint kbd{
+  font-family:var(--mono);font-size:9.5px;background:var(--board-2);
+  border:1px solid rgba(17,17,17,.1);padding:1px 4px;color:var(--ink-3);
+}
+
+/* 打字指示 */
+.typing{display:flex;gap:5px;padding:4px 0}
+.typing span{
+  width:5px;height:5px;border-radius:50%;background:var(--mark);opacity:.5;
+  animation:bounce 1.3s infinite;
+}
+.typing span:nth-child(2){animation-delay:.16s}
+.typing span:nth-child(3){animation-delay:.32s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
+
+@media (max-width:760px){
+  .launch,.scenarios,.stepbar,.sheet{padding-left:20px;padding-right:20px}
+  .sc{padding:16px 0;border-left:0;border-top:1px solid rgba(17,17,17,.1)}
+  .sc:first-child{border-top:0}
+  .sheet-title{font-size:24px}
+}
+</style>
+</head>
+<body>
+
+<nav class="rail" aria-label="主导航">
+  <a class="rail-brand" href="08-overview.html">
+    <span class="rail-mark"></span>
+    <span class="rail-name">能力训练平台</span>
+  </a>
+  <div class="rail-nav">
+    <a class="rail-tab" href="08-overview.html"><span class="lbl">概览</span></a>
+    <a class="rail-tab" href="09-captures.html"><span class="lbl">记录总结</span><span class="cnt">0</span></a>
+    <a class="rail-tab" href="07-board.html"><span class="lbl">方法论</span><span class="cnt">21</span></a>
+    <span class="rail-tab here" aria-current="page"><span class="lbl">AI 训练师</span><span class="cnt">2</span></span>
+    <a class="rail-tab" href="11-settings.html"><span class="lbl">辅助系统</span></a>
+  </div>
+  <div class="rail-foot">
+    <button class="rail-btn rail-toggle" aria-expanded="false" title="展开侧栏（[）">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <span class="lbl">收起</span>
+    </button>
+    <button class="rail-btn" title="搜索（⌘K）" onclick="window.boardToast ? boardToast('搜索（⌘K）') : alert('搜索（⌘K）')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span class="lbl">搜索</span>
+    </button>
+    <button class="rail-btn" title="回到顶部" onclick="scrollTo({top:0,behavior:'smooth'})">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+      <span class="lbl">回到顶部</span>
+    </button>
+  </div>
+</nav>
+    <div class="viewswitch" id="viewswitch">
+      <button class="vs-btn on" id="vs-card" onclick="setView('card')">全部训练</button>
+      <button class="vs-btn" id="vs-reader" onclick="setView('reader')">进入训练</button>
+    </div>
+  </div>
+</header>
+
+<!-- 开新训练 -->
+<section class="launch">
+  <div class="launch-in">
+    <div>
+      <div class="launch-t">开始一场新的训练</div>
+      <div class="launch-d">选一个场景。产品拆解会走 8 步固定流程，另外两个是自由对话。</div>
+    </div>
+    <div class="launch-actions">
+      <button class="go" onclick="boardToast('新建训练')">新建训练</button>
+    </div>
+  </div>
+</section>
+
+<div class="scenarios">
+  <div class="sc" onclick="boardToast('开始「产品拆解」')">
+    <span class="sc-n">01 · 8 步流程</span>
+    <div class="sc-t">产品拆解</div>
+    <div class="sc-d">拆一款产品的定位、结构、机制与商业化</div>
+    <div class="sc-m">需选产品类型 · 有评分表</div>
+  </div>
+  <div class="sc" onclick="boardToast('开始「需求调研」')">
+    <span class="sc-n">02 · 自由对话</span>
+    <div class="sc-t">需求调研</div>
+    <div class="sc-d">把一句模糊诉求，拆成可验证的假设与调研方案</div>
+    <div class="sc-m">无固定步骤</div>
+  </div>
+  <div class="sc" onclick="boardToast('开始「流程设计」')">
+    <span class="sc-n">03 · 自由对话</span>
+    <div class="sc-t">流程设计</div>
+    <div class="sc-d">设计端到端业务流程、角色分工、异常分支与衡量指标</div>
+    <div class="sc-m">无固定步骤</div>
+  </div>
+</div>
+
+<!-- 便签墙：所有训练场次 -->
+<section class="board" id="boardEl">
+  <div class="wall wide" id="wall"></div>
+</section>
+
+<!-- 进入训练：真正的操作区 -->
+<section class="reader on" id="reader" style="display:none;max-width:100%;padding:0">
+  <div class="backbar" id="backbar" style="max-width:820px;margin:0 auto;padding:18px 40px 0">
+    <button onclick="setView('card')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      回到全部训练
+    </button>
+  </div>
+
+  <!-- 8 步胶囊条 -->
+  <div class="stepbar" id="stepbar"></div>
+
+  <!-- 会话 -->
+  <div class="sheet" id="sheet"></div>
+  <div class="pager" style="max-width:820px;margin:0 auto;padding:0 40px 60px;position:relative;z-index:1">
+    <button class="pager-btn" id="prev" onclick="step(-1)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      上一场
+    </button>
+    <div class="pager-mid"><div class="dots" id="dots"></div><span id="pnum"></span></div>
+    <button class="pager-btn" id="next" onclick="step(1)">
+      下一场
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+</section>
+
+<footer class="colophon">
+  <span>
+    <b>AI 训练师</b> · 2 场进行中 · 0 场已完成<br>
+    产品拆解 1 · 需求调研 1 · 流程设计 0<br>
+    训练师的提问会引用方法论库里的词条
+  </span>
+  <span style="text-align:right">
+    朱砂图钉 <span class="mk">●</span> 表示这场训练正在使用某个词条<br>
+    进入训练后可用 ← → 在会话间切换<br>
+    最近活动 2026-09-25 00:55
+  </span>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script src="_shared.js"></script>
+<script>
+/* ============================================================
+   训练场次（真实数据：data/sessions.json 的 2 条）
+   ============================================================ */
+const STEPS = [
+  "确认拆解目标","场景与用户画像","诊断匮乏感","五层架构拆解",
+  "Agent 四要素","竞品分析与差异化","商业化路径","输出拆解报告"
+];
+
+const SESSIONS = [
+  {
+    id:"trn_c706e98ca548",
+    category:"产品拆解",
+    eyebrow:"产品拆解 · AI 助教引导",
+    title:"拆解 Notion",
+    lead:"停在第 1 步：确认拆解目标。已答 2 轮，还缺「拆解目标」与「目标用户」。",
+    detail:"训练师指出「笔记工具」这个定位把它放进了 Obsidian、Bear 那一类，而官网自称 all-in-one workspace。差别在商业模式。",
+    foot:"第 1 / 8 步", footFlag:"warn", flagged:true,
+    meta:[["场景","产品拆解"],["模式","AI 助教引导"],["当前步骤","第 1 步 · 确认拆解目标"],["轮数","5 轮"],["最近","今天 00:55"]],
+    steps:1,
+    turns:[
+      {role:"assistant", at:"00:52", tag:"第 1 步", content:
+`我们从第一步开始：**确认拆解目标**。
+
+你需要产出一张《产品拆解目标确认卡》，包含三样东西：
+- **一句话描述** —— 用不超过 30 字说清 Notion 是什么（不许抄官网 slogan）
+- **拆解目标** —— 你想通过这次拆解回答哪个具体问题
+- **目标用户** —— 它主要服务谁，这个判断要能拿证据支撑
+
+先说第一项。你觉得 Notion 是什么？`},
+      {role:"user", at:"00:53", content:
+`我觉得 Notion 是一个把笔记、数据库、看板揉在一起的笔记工具，主打一个"什么都能放"。`},
+      {role:"assistant", at:"00:54", tag:"第 1 步", content:
+`"什么都能放"这个观察是对的。但"笔记工具"这个定位有个问题 ——
+
+它把 Notion 放进了 Obsidian、Bear 那一类里。而 Notion 官网自称的是 \`all-in-one workspace\`。这中间的差别不是措辞，是**商业模式**：笔记工具靠个人订阅，workspace 靠团队人均席位。
+
+我先把你的第一版答案记下来，你带着这个问题继续：`,
+       artifact:{
+         title:"目标确认卡 · 草稿 v1",
+         saved:true,
+         fields:[
+           ["一句话描述","把笔记、数据库、看板揉在一起的笔记工具",false],
+           ["拆解目标","",true],
+           ["目标用户","",true]
+         ]
+       },
+       tools:[
+         {name:"read_methodology", detail:"命中 2 个知识点：商业模式画布、护城河与转换成本", result:"2 条"},
+         {name:"save_artifact", detail:"目标确认卡 v1 · 已写入本次训练", result:"ok"},
+         {name:"advance_hint", detail:"下一步未解锁：等待「拆解目标」字段", result:"等待"}
+       ],
+       suggestions:[
+         "我想拆的是它的留存机制",
+         "帮我看看它到底卖给谁",
+         "先给我一个示范答案"
+       ]}
+    ]
+  },
+  {
+    id:"trn_b81f4a2c9e07",
+    category:"需求调研",
+    eyebrow:"需求调研 · AI 助教引导",
+    title:"给小米手机添加一个 AI 功能",
+    lead:"自由对话，没有固定步骤。已经聊了 3 轮，随时可以继续。",
+    detail:"这一场是开放式的：你抛出一个假设，训练师追问它是否可验证，然后逼你把模糊表述换成具体的行为和指标。",
+    foot:"进行中", footFlag:"warn", flagged:true,
+    meta:[["场景","需求调研"],["模式","AI 助教引导"],["轮数","3 轮"],["最近","今天 00:12"]],
+    steps:0,
+    turns:[
+      {role:"assistant", at:"00:08", content:
+`你想给小米手机加一个 AI 功能。先别急着说功能本身 ——
+
+我想先问清楚：**你观察到的那个"没被满足的需求"是什么？** 具体到某个场景，比如"我妈在什么情况下会对着手机发呆三秒然后放弃"。`},
+      {role:"user", at:"00:10", content:
+`我觉得是拍照之后的整理。拍了几百张照片，从来不会去翻，也不知道怎么找。`},
+      {role:"assistant", at:"00:12", content:
+`好，这个比"加个 AI 相册"具体多了。现在把它变成一个可验证的假设：
+
+**如果用户在拍照后 24 小时内收到 3 张"你可能想留的"精选，他的相册回看率会上升。**
+
+注意这里有三处可验证的设计：
+- 时间窗口（24 小时）—— 不是"以后"
+- 数量（3 张）—— 不是"一些"
+- 指标（回看率）—— 不是"体验更好"
+
+你现在缺的是**基线**：他现在多久看一次相册？没有这个数，后面的改动都无法判断有没有用。`}
+    ]
+  }
+];
+
+/* ============================================================
+   初始化便签墙
+   注意：这一页的"详情"是完整的训练会话界面，不是通用详情，
+   所以用 onOpen 接管点击，不走共享的 renderReader。
+   ============================================================ */
+let currentIdx = 0;
+initRail();
+
+initBoard(SESSIONS, {
+  onOpen: function(it, id){
+    const i = SESSIONS.findIndex(s=>s.id === id);
+    currentIdx = i < 0 ? 0 : i;
+    openSession();
+  }
+});
+
+/* ============================================================
+   进入训练：重写 setView，让它渲染完整的会话界面
+   ============================================================ */
+const origSetView = window.setView;
+
+function renderSession(it){
+  /* ---- 8 步胶囊条 ---- */
+  const bar = document.getElementById("stepbar");
+  if(it.steps > 0){
+    bar.style.display = "flex";
+    bar.innerHTML = STEPS.map((name,i)=>{
+      const n = i + 1;
+      const cls = n < it.steps ? "done" : n === it.steps ? "on" : "";
+      return `<button class="sp ${cls}" data-step="${n}">
+                <span class="n">${n}</span>${name}
+              </button>` + (i < STEPS.length-1 ? '<span class="sp-line"></span>' : '');
+    }).join("");
+    bar.querySelectorAll(".sp").forEach(b=>{
+      b.addEventListener("click", ()=>{
+        const n = +b.dataset.step;
+        if(n > it.steps){ boardToast(`第 ${n} 步还没解锁`); return; }
+        boardToast("查看第 " + n + " 步");
+      });
+    });
+  } else {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+  }
+
+  /* ---- 会话正文 ---- */
+  const sheet = document.getElementById("sheet");
+  sheet.innerHTML = `
+    <div class="sheet-head">
+      <div class="sheet-domain">
+        ${it.meta.filter(m=>["场景","模式"].includes(m[0])).map(m=>`<span>${m[1]}</span>`).join("<span>·</span>")}
+      </div>
+      <h2 class="sheet-title">${it.title}</h2>
+      <p class="sheet-sub">${it.lead}</p>
+      <div class="sheet-actions">
+        <button class="go" onclick="boardToast('生成报告')">生成训练报告</button>
+        <button onclick="boardToast('训练设置')">训练设置</button>
+      </div>
+    </div>
+
+    <div class="turns" id="turns"></div>
+
+    <div class="composer">
+      <div class="composer-box">
+        <textarea id="ta" rows="2" placeholder="回答训练师的问题，或说说你的想法…"></textarea>
+        <div class="composer-foot">
+          <button class="cf-btn" onclick="boardToast('引用知识点')">引用知识点</button>
+          <button class="cf-btn" onclick="boardToast('上传截图')">上传截图</button>
+          <button class="send" id="sendBtn" disabled>发送</button>
+        </div>
+      </div>
+      <div class="composer-hint">
+        <span><kbd>↵</kbd> 发送</span>
+        <span><kbd>⇧↵</kbd> 换行</span>
+        <span>训练师的提问会引用你的方法论词条</span>
+      </div>
+    </div>
+  `;
+
+  renderTurns(it.turns);
+  bindComposer(it);
+}
+
+function renderTurns(turns){
+  const host = document.getElementById("turns");
+  host.innerHTML = turns.map(t=>{
+    const isUser = t.role === "user";
+    let body = md(t.content);
+
+    let artifact = "";
+    if(t.artifact){
+      artifact = `
+        <div class="artifact">
+          <div class="artifact-head">
+            ${t.artifact.title}
+            ${t.artifact.saved ? '<span class="ok">✓ 已保存</span>' : ""}
+          </div>
+          <div class="artifact-body">
+            ${t.artifact.fields.map(f=>`
+              <div class="afield">
+                <span class="afield-k">${f[0]}</span>
+                <span class="afield-v${f[2]?" todo":""}">${f[2] ? "待填写" : f[1]}</span>
+              </div>`).join("")}
+          </div>
+        </div>`;
+    }
+
+    let tools = "";
+    if(t.tools && t.tools.length){
+      tools = `<div class="turn-tools">${t.tools.map(tl=>`
+        <div class="turn-tool">
+          <span class="st">✓</span>
+          <span class="nm">${tl.name}</span>
+          <span>${tl.detail}</span>
+          <span class="rs">${tl.result}</span>
+        </div>`).join("")}</div>`;
+    }
+
+    let sug = "";
+    if(t.suggestions && t.suggestions.length){
+      sug = `<div class="suggestions">${t.suggestions.map((s,i)=>
+        `<button class="sug" data-sug="${i}">${s}</button>`).join("")}</div>`;
+    }
+
+    return `
+      <div class="turn turn-${isUser?"user":"ai"}">
+        <div class="turn-role">
+          <span>${isUser ? "我" : "训练师"}</span>
+          <span class="t">${t.at || ""}</span>
+          ${t.tag ? `<span class="tag">${t.tag}</span>` : ""}
+        </div>
+        <div class="turn-body">${body}</div>
+        ${artifact}${tools}${sug}
+      </div>`;
+  }).join("");
+
+  host.querySelectorAll("[data-sug]").forEach(b=>{
+    b.addEventListener("click", ()=>boardToast("已采用建议：" + b.textContent));
+  });
+  host.scrollIntoView;
+}
+
+/* 极简 markdown：粗体、斜体高亮、行内代码、列表、段落 */
+function md(s){
+  const esc2 = s.replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  let out = "";
+  const lines = esc2.split("\n");
+  let inList = false;
+  for(let raw of lines){
+    let line = raw.trim();
+    if(!line){
+      if(inList){ out += "</ul>"; inList = false; }
+      continue;
+    }
+    if(line.startsWith("- ")){
+      if(!inList){ out += "<ul>"; inList = true; }
+      out += "<li>" + inline(line.slice(2)) + "</li>";
+      continue;
+    }
+    if(inList){ out += "</ul>"; inList = false; }
+    out += "<p style='margin-bottom:11px'>" + inline(line) + "</p>";
+  }
+  if(inList) out += "</ul>";
+  return out;
+}
+function inline(s){
+  return s
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`(.+?)`/g, "<code>$1</code>");
+}
+
+/* ---- 输入框 ---- */
+function bindComposer(it){
+  const ta = document.getElementById("ta");
+  const btn = document.getElementById("sendBtn");
+  ta.addEventListener("input", ()=>{
+    btn.disabled = ta.value.trim().length === 0;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+  });
+  ta.addEventListener("keydown", e=>{
+    if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+  });
+  btn.addEventListener("click", send);
+
+  function send(){
+    const text = ta.value.trim();
+    if(!text) return;
+    const turns = document.getElementById("turns");
+    const now = new Date();
+    const at = String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
+
+    const mine = document.createElement("div");
+    mine.className = "turn turn-user";
+    mine.innerHTML = `<div class="turn-role"><span>我</span><span class="t">${at}</span></div>
+      <div class="turn-body">${text.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}</div>`;
+    turns.appendChild(mine);
+    ta.value = ""; ta.style.height = "auto"; btn.disabled = true;
+
+    const typing = document.createElement("div");
+    typing.className = "turn turn-ai";
+    typing.innerHTML = `<div class="turn-role"><span>训练师</span><span class="t">${at}</span></div>
+      <div class="turn-body"><div class="typing"><span></span><span></span><span></span></div></div>`;
+    turns.appendChild(typing);
+    typing.scrollIntoView({behavior:"smooth", block:"center"});
+
+    setTimeout(()=>{
+      typing.remove();
+      const reply = document.createElement("div");
+      reply.className = "turn turn-ai";
+      reply.innerHTML = `<div class="turn-role"><span>训练师</span><span class="t">${at}</span></div>
+        <div class="turn-body"><p>收到。这里有个可以往下挖的点：你提到了自己的想法，但还没有给出<strong>判断依据</strong>。</p>
+        <p>先把它变成一句可验证的话 —— 加上时间窗口、数量、以及一个能测的指标。比如"如果……那么……会在……之内发生"。</p></div>`;
+      turns.appendChild(reply);
+      reply.scrollIntoView({behavior:"smooth", block:"center"});
+    }, 1400 + Math.random()*600);
+  }
+}
+
+/* ============================================================
+   视图切换
+   card   = 全部训练的便签墙
+   reader = 进入某一场的完整会话界面
+   ============================================================ */
+function openSession(){
+  const board = document.getElementById("boardEl");
+  const reader = document.getElementById("reader");
+
+  document.getElementById("vs-card").classList.remove("on");
+  document.getElementById("vs-reader").classList.add("on");
+  board.style.display = "none";
+  reader.style.display = "block";
+  document.getElementById("backbar").style.display = "flex";
+
+  const it = SESSIONS[Math.max(0, Math.min(currentIdx, SESSIONS.length-1))];
+  renderSession(it);
+
+  document.getElementById("pnum").textContent = (currentIdx+1) + " / " + SESSIONS.length;
+  document.getElementById("prev").disabled = currentIdx === 0;
+  document.getElementById("next").disabled = currentIdx === SESSIONS.length-1;
+  document.getElementById("dots").innerHTML = SESSIONS.map((_,i)=>
+    `<i class="${i===currentIdx?"on":""}" data-i="${i}"></i>`).join("");
+  document.querySelectorAll("#dots i").forEach(d=>{
+    d.addEventListener("click", ()=>{ currentIdx = +d.dataset.i; openSession(); });
+  });
+
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+
+function showBoard(){
+  document.getElementById("boardEl").style.display = "";
+  document.getElementById("reader").style.display = "none";
+  document.getElementById("vs-card").classList.add("on");
+  document.getElementById("vs-reader").classList.remove("on");
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+
+function step(d){
+  const n = currentIdx + d;
+  if(n < 0 || n >= SESSIONS.length) return;
+  currentIdx = n;
+  openSession();
+}
+
+/* 顶部两个视图按钮 */
+document.getElementById("vs-card").addEventListener("click", showBoard);
+document.getElementById("vs-reader").addEventListener("click", ()=>{
+  if(SESSIONS.length) openSession();
+});
+
+/* 初始：显示便签墙 */
+showBoard();
+</script>
+</body>
+</html>

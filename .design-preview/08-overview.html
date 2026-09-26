@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>概览 · 能力训练平台</title>
+<link rel="stylesheet" href="_shared.css">
+<style>
+/* 概览的专属部分：一屏「今天做什么」的告示 + 数据条 */
+.notice{
+  max-width:1360px;margin:0 auto;padding:26px 40px 0;position:relative;z-index:1;
+}
+.notice-in{
+  display:flex;align-items:baseline;justify-content:space-between;
+  gap:26px;flex-wrap:wrap;
+  padding:20px 0;border-bottom:1px solid var(--rule);
+}
+.notice-l{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+.notice-title{
+  font-family:var(--serif);font-size:24px;font-weight:600;
+  letter-spacing:.01em;line-height:1.35;
+}
+.notice-title .step{color:var(--mark)}
+.notice-desc{font-size:13.5px;color:var(--ink-3);line-height:1.8}
+.notice-actions{display:flex;gap:22px;font-size:13px;flex:none;align-items:baseline}
+.notice-actions button{
+  background:none;border:0;font-family:inherit;font-size:13px;cursor:pointer;
+  color:var(--ink-3);border-bottom:1px solid transparent;transition:all .18s;padding:0;
+}
+.notice-actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.notice-actions button.go{color:var(--mark);font-weight:600}
+.notice-actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* 数据：一行，用竖线切分，不用卡片 */
+.figures{
+  display:flex;flex-wrap:wrap;gap:0;
+  padding:20px 0 4px;
+}
+.fig{
+  padding:0 30px;border-left:1px solid rgba(17,17,17,.1);
+  display:flex;align-items:baseline;gap:10px;
+}
+.fig:first-child{padding-left:0;border-left:0}
+.fig-n{
+  font-family:var(--serif);font-size:30px;font-weight:600;
+  line-height:1;letter-spacing:-.01em;
+}
+.fig-n.dim{color:var(--ink-4)}
+.fig-l{font-size:11.5px;color:var(--ink-3)}
+.fig-sub{font-size:10.5px;color:var(--ink-4);font-family:var(--mono)}
+</style>
+</head>
+<body>
+
+<nav class="rail" aria-label="主导航">
+  <a class="rail-brand" href="08-overview.html">
+    <span class="rail-mark"></span>
+    <span class="rail-name">能力训练平台</span>
+  </a>
+  <div class="rail-nav">
+    <span class="rail-tab here" aria-current="page"><span class="lbl">概览</span></span>
+    <a class="rail-tab" href="09-captures.html"><span class="lbl">记录总结</span><span class="cnt">0</span></a>
+    <a class="rail-tab" href="07-board.html"><span class="lbl">方法论</span><span class="cnt">21</span></a>
+    <a class="rail-tab" href="10-trainer.html"><span class="lbl">AI 训练师</span><span class="cnt">2</span></a>
+    <a class="rail-tab" href="11-settings.html"><span class="lbl">辅助系统</span></a>
+  </div>
+  <div class="rail-foot">
+    <button class="rail-btn rail-toggle" aria-expanded="false" title="展开侧栏（[）">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      <span class="lbl">收起</span>
+    </button>
+    <button class="rail-btn" title="搜索（⌘K）" onclick="window.boardToast ? boardToast('搜索（⌘K）') : alert('搜索（⌘K）')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span class="lbl">搜索</span>
+    </button>
+    <button class="rail-btn" title="回到顶部" onclick="scrollTo({top:0,behavior:'smooth'})">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+      <span class="lbl">回到顶部</span>
+    </button>
+  </div>
+</nav>
+  </div>
+</header>
+
+<!-- 今天做什么 -->
+<section class="notice">
+  <div class="notice-in">
+    <div class="notice-l">
+      <span class="notice-title">拆解 Notion <span class="step">停在第 1 步</span></span>
+      <span class="notice-desc">确认拆解目标 · 已答 2 轮 · 缺「拆解目标」与「目标用户」两项</span>
+    </div>
+    <div class="notice-actions">
+      <button class="go" onclick="boardLoc('10-trainer.html')">继续这一步</button>
+      <button onclick="boardToast('新建训练')">开始新的训练</button>
+    </div>
+  </div>
+
+  <div class="figures">
+    <div class="fig"><span class="fig-n dim">0</span><span class="fig-l">记录总结</span></div>
+    <div class="fig"><span class="fig-n">21</span><span class="fig-l">知识点</span><span class="fig-sub">8 领域</span></div>
+    <div class="fig"><span class="fig-n">2</span><span class="fig-l">训练场次</span><span class="fig-sub">均进行中</span></div>
+    <div class="fig"><span class="fig-n dim">—</span><span class="fig-l">平均得分</span><span class="fig-sub">待生成报告</span></div>
+  </div>
+</section>
+
+<!-- 便签墙：正在进行的训练 + 最近用到的知识点 -->
+<section class="board">
+  <div class="wall" id="wall"></div>
+</section>
+
+<footer class="colophon">
+  <span>
+    <b>能力训练平台</b> · 一个人的练功房<br>
+    记录总结 0 · 方法论 21 · 训练场次 2
+  </span>
+  <span style="text-align:right">
+    朱砂图钉 <span class="mk">●</span> 表示与进行中的训练相关<br>
+    便签角度按条目固定，便于位置记忆<br>
+    最近活动 2026-09-25 00:55
+  </span>
+</footer>
+
+<div class="hintbar">
+  <span><kbd>/</kbd> 检索</span>
+  <span><kbd>←</kbd><kbd>→</kbd> 翻页</span>
+  <span><kbd>空格</kbd> 切换视图</span>
+  <span><kbd>[</kbd> 侧栏</span>
+  <span class="hint-label">按 <kbd>?</kbd> 关闭</span>
+</div>
+
+<!-- 详情 -->
+<section class="reader" id="reader">
+  <div class="backbar" id="backbar">
+    <button onclick="setView('card')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      回到便签墙
+    </button>
+  </div>
+  <div class="reader-card" id="rcard"></div>
+  <div class="pager">
+    <button class="pager-btn" id="prev" onclick="step(-1)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+      上一个
+    </button>
+    <div class="pager-mid"><div class="dots" id="dots"></div><span id="pnum"></span></div>
+    <button class="pager-btn" id="next" onclick="step(1)">
+      下一个
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="_shared.js"></script>
+<script>
+/* ============================================================
+   概览的便签：进行中的训练 + 最近用到的知识点
+   ============================================================ */
+const NOTES = [
+  {
+    id:"trn_c706e98ca548", kind:"session",
+    eyebrow:"产品拆解", state:"进行中",
+    title:"拆解 Notion",
+    lead:"停在第 1 步：确认拆解目标。已经答了 2 轮，还缺「拆解目标」和「目标用户」两项。",
+    detail:"训练师指出「笔记工具」这个定位把 Notion 放进了 Obsidian、Bear 那一类，而它官网自称 all-in-one workspace。差别不在措辞，在商业模式：笔记工具靠个人订阅，workspace 靠团队人均席位。",
+    foot:"进行到第 1 步", footFlag:"warn", flagged:true,
+    meta:[["场景","产品拆解"],["模式","AI 助教引导"],["轮数","5 轮"],["最近","今天 00:55"]],
+    actions:[{t:"继续这一步",go:true}]
+  },
+  {
+    id:"trn_b81f4a2c9e07", kind:"session",
+    eyebrow:"需求调研", state:"进行中",
+    title:"给小米手机添加一个 AI 功能",
+    lead:"自由对话，没有固定步骤。已经聊了 3 轮，随时可以继续。",
+    detail:"这一场是开放式的：你抛出一个假设，训练师追问它是否可验证，然后逼你把模糊表述换成具体的行为和指标。",
+    foot:"聊到第 3 轮", footFlag:"warn", flagged:true,
+    meta:[["场景","需求调研"],["模式","AI 助教引导"],["轮数","3 轮"],["最近","今天 00:12"]],
+    actions:[{t:"继续这一步",go:true}]
+  },
+  {
+    id:"mth_builtin_01", kind:"method",
+    eyebrow:"心理学",
+    title:"损失厌恶",
+    lead:"同样大小的得失，失去带来的痛苦大约是得到带来的快乐的两倍。",
+    detail:"人在面对收益时倾向规避风险，面对损失时反而倾向冒险。这让用户对「失去已有权益」的反应远强于「获得同等新权益」。边界：当损失很小或反复出现时会钝化；对不熟悉的领域参照点不明确，效应减弱。",
+    foot:"训练中引用过 2 次",
+    meta:[["领域","心理学"],["适用","产品拆解、流程设计"],["在训练中被引用","2 次"]],
+    actions:[{t:"打开词条",go:true}]
+  },
+  {
+    id:"mth_builtin_02", kind:"method",
+    eyebrow:"心理学",
+    title:"认知负荷",
+    lead:"工作记忆一次只能处理少量信息，超出部分会被直接放弃。",
+    detail:"认知负荷分三类：内在负荷（任务本身难度）、外在负荷（界面与表达造成的额外负担）、关联负荷（用于建立理解的有益难度）。设计能优化的是外在负荷，砍掉它才能把有限的工作记忆让给真正的任务。",
+    foot:"心理学",
+    meta:[["领域","心理学"],["适用","产品拆解、流程设计"],["在训练中被引用","2 次"]],
+    actions:[{t:"打开词条",go:true}]
+  },
+  {
+    id:"mth_builtin_05", kind:"method",
+    eyebrow:"心理学",
+    title:"确认偏误",
+    lead:"人倾向于寻找支持自己已有观点的证据，而忽略相反的证据。",
+    detail:"这在用户调研里造成双重损害：研究者会问出引导性问题，受访者也会给出迎合性回答。所以访谈时要先问行为（你上次怎么做），再问态度（你觉得怎么样）。",
+    foot:"心理学",
+    meta:[["领域","心理学"],["适用","需求调研"]],
+    actions:[{t:"打开词条",go:true}]
+  },
+  {
+    id:"mth_builtin_06", kind:"method",
+    eyebrow:"经济学",
+    title:"机会成本",
+    lead:"为了得到某样东西而放弃的、价值最高的那个替代选项。",
+    detail:"成本不是花掉的钱，而是放弃了的最好选择。做功能时真正的成本是团队这段时间不能做的事。排优先级时，把每个需求换算成「不做它就能做什么」，比换算成「开发要几天」更接近真实决策。",
+    foot:"经济学",
+    meta:[["领域","经济学"],["适用","流程设计、需求调研"]],
+    actions:[{t:"打开词条",go:true}]
+  }
+];
+
+initRail();
+initBoard(NOTES, {emptyHtml:""});
+</script>
+</body>
+</html>

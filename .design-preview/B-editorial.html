@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方向 B · 编辑室 — 产品经理能力训练平台</title>
+<style>
+/* ==========================================================================
+   方向 B：编辑室（Notion 主导）
+
+   设计读法：单人技能训练工作台，气质"文档、编辑、安静"。
+   三档旋钮：VARIANCE 4 / MOTION 4 / DENSITY 3
+
+   核心决策（对治"卡片太多像后台管理"）：
+   1. chrome 几乎全部消失。没有卡片、没有阴影、没有圆角块。
+      层级只用「字重 + 分隔线 + 留白」三样表达。
+   2. 正文使用衬线体做标题，带来"文章/编辑"的气质，
+      与"知识点、读书、思考"这个内容属性直接对应。
+   3. 一路白底（#FFFFFF），不用灰底衬托——那是"应用"的做法，不是"文档"的做法。
+   4. 唯一的蓝 #2383E2 只做链接和选中态，不做装饰。
+   ========================================================================== */
+
+:root {
+  /* ---- 色板 ---- */
+  --paper:     #FFFFFF;  /* 纯白，文档的底 */
+  --ink:       #37352F;  /* Notion 暖墨：不是黑，是有温度的深褐 */
+  --ink-2:     #5A5750;
+  --ink-3:     #787774;  /* 次要文字 */
+  --ink-4:     #9B9A97;  /* 占位/极次要 */
+  --rule:      #E9E9E7;  /* 分隔线：Notion 的标志性浅灰 */
+  --rule-2:    #F1F1EF;
+  --link:      #2383E2;  /* 唯一强调色 */
+  --wash:      #F7F7F5;  /* 极轻的悬停底色 */
+  --mark:      #FBF3DB;  /* 高亮记号 */
+
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 72px;
+
+  --serif: "Newsreader", "Source Han Serif SC", "Songti SC", Georgia, serif;
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --read: 708px;  /* 阅读栏宽度：约 70 个西文字符，skill 要求 < 80ch */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font); font-size: 14.5px; line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { display: grid; grid-template-columns: 236px 1fr; }
+
+/* 侧栏：一块极轻的底色，没有描边、没有阴影 */
+.rail {
+  background: var(--wash); padding: var(--s5) var(--s3) var(--s4);
+  display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh;
+  border-right: 1px solid var(--rule);
+}
+.brand { display: flex; align-items: center; gap: 9px; padding: 0 var(--s2) var(--s4); }
+.brand-mark {
+  width: 20px; height: 20px; border-radius: 4px; flex: none;
+  background: var(--ink); display: grid; place-items: center;
+}
+.brand-mark svg { width: 11px; height: 11px; stroke: #fff; }
+.brand-name { font-size: 13px; font-weight: 600; }
+
+.nav-label { font-size: 11.5px; color: var(--ink-4); padding: var(--s3) var(--s2) var(--s1); }
+.nav { display: flex; flex-direction: column; }
+.nav a {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px var(--s2); border-radius: 4px;
+  color: var(--ink-2); text-decoration: none; font-size: 13.5px;
+  transition: background .12s var(--ease);
+}
+.nav a svg { width: 15px; height: 15px; flex: none; opacity: .7; }
+.nav a:hover { background: rgba(55,53,47,.055); }
+/* 选中：只用底色和字重，不用颜色块 */
+.nav a.on { background: rgba(55,53,47,.08); font-weight: 600; color: var(--ink); }
+.rail-foot { margin-top: auto; font-size: 11.5px; color: var(--ink-4); padding: var(--s3) var(--s2) 0; }
+
+/* 主区：内容居中在阅读栏里，两侧大量留白 */
+.main { padding: var(--s8) var(--s6) 120px; }
+.wrap { max-width: var(--read); margin: 0 auto; }
+
+/* 页头：像文档标题，不是仪表盘标题 */
+h1 {
+  font-family: var(--serif); font-size: 36px; font-weight: 500;
+  line-height: 1.2; letter-spacing: -0.02em; margin-bottom: var(--s2);
+}
+.head-note { color: var(--ink-3); font-size: 14px; margin-bottom: var(--s6); }
+
+/* 主操作：不是卡片，是一条带左边框的提示块（Notion 的 callout） */
+.callout {
+  border-left: 3px solid var(--ink);
+  background: var(--wash);
+  padding: var(--s4) var(--s4);
+  border-radius: 0 4px 4px 0;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s4); margin-bottom: var(--s6);
+}
+.callout-t { font-weight: 600; font-size: 14.5px; margin-bottom: 2px; }
+.callout-s { color: var(--ink-3); font-size: 13px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 4px; font-size: 13.5px;
+  border: 1px solid var(--rule); background: var(--paper); color: var(--ink);
+  cursor: pointer; font-family: inherit; font-weight: 500;
+  transition: background .12s var(--ease);
+}
+.btn:hover { background: var(--wash); }
+.btn svg { width: 14px; height: 14px; }
+.btn-dark { background: var(--ink); border-color: var(--ink); color: #fff; }
+.btn-dark:hover { background: #2A2824; }
+
+/* 分区标题：Notion 式 —— 小标题 + 下方分隔线，无装饰 */
+h2.sec {
+  font-size: 13px; font-weight: 600; color: var(--ink-3);
+  padding-bottom: var(--s2); border-bottom: 1px solid var(--rule);
+  margin: var(--s6) 0 var(--s1); letter-spacing: 0.01em;
+}
+
+/* 统计：完全不用卡片，做成"属性列表"的样子（Notion 数据库的属性行） */
+.props { display: flex; flex-direction: column; }
+.prop {
+  display: grid; grid-template-columns: 160px 1fr;
+  padding: 7px 0; border-bottom: 1px solid var(--rule-2);
+  font-size: 14px; align-items: baseline;
+}
+.prop-k { color: var(--ink-3); }
+.prop-v { font-weight: 500; font-variant-numeric: tabular-nums; }
+.prop-v .unit { color: var(--ink-3); font-weight: 400; font-size: 13px; margin-left: 3px; }
+.prop-v .dim { color: var(--ink-4); font-weight: 400; }
+
+/* 场景：文档里的页面链接列表（Notion 的 page link 样式） */
+.pages { display: flex; flex-direction: column; margin-top: var(--s1); }
+.page-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: var(--s3) var(--s2); margin: 0 calc(var(--s2) * -1);
+  border-radius: 4px; text-decoration: none; color: inherit;
+  transition: background .12s var(--ease);
+}
+.page-item:hover { background: var(--wash); }
+.page-item:hover .page-t { text-decoration: underline; text-decoration-color: var(--ink-4); text-underline-offset: 3px; }
+.page-ico { font-size: 15px; line-height: 1.5; flex: none; width: 18px; }
+.page-t { font-weight: 600; font-size: 14.5px; }
+.page-s { color: var(--ink-3); font-size: 13.5px; margin-top: 1px; }
+
+/* 最近：文档里的"列表视图" —— 每行一个条目，右侧元信息 */
+.list { display: flex; flex-direction: column; }
+.li {
+  display: grid; grid-template-columns: 1fr auto; gap: var(--s4);
+  align-items: baseline; padding: var(--s3) var(--s2);
+  margin: 0 calc(var(--s2) * -1);
+  border-bottom: 1px solid var(--rule-2); border-radius: 4px;
+  text-decoration: none; color: inherit; transition: background .12s var(--ease);
+}
+.li:hover { background: var(--wash); }
+.li:hover .li-t { text-decoration: underline; text-decoration-color: var(--ink-4); text-underline-offset: 3px; }
+.li-t { font-size: 14.5px; font-weight: 500; }
+.li-s { color: var(--ink-3); font-size: 13px; margin-top: 2px; }
+.li-meta { color: var(--ink-4); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tag {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  background: var(--rule-2); color: var(--ink-2); font-size: 11.5px;
+  margin-right: 4px; font-weight: 500;
+}
+.tag.blue { background: #E7F3FE; color: #1A6BB0; }
+.tag.green{ background: #EDF3EC; color: #2B593F; }
+
+.empty {
+  color: var(--ink-4); font-size: 13.5px; padding: var(--s4) 0;
+  border-bottom: 1px dashed var(--rule);
+}
+
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 3px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16 10 8l4 5 6-8"/></svg></span>
+      <span class="brand-name">能力训练平台</span>
+    </div>
+    <div class="nav-label">工作台</div>
+    <nav class="nav">
+      <a class="on" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>概览</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>记录总结</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg>方法论</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>AI 训练师</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h10"/></svg>辅助系统</a>
+    </nav>
+    <div class="rail-foot">今日已练 0 分钟</div>
+  </aside>
+
+  <main class="main">
+    <div class="wrap">
+
+      <h1>概览</h1>
+      <p class="head-note">两次训练都在进行中。继续其中一次，或开一个新的。</p>
+
+      <!-- 主操作：callout，不是卡片 -->
+      <div class="callout">
+        <div>
+          <div class="callout-t">继续「拆解 Notion」</div>
+          <div class="callout-s">第 1 步 · 确认拆解目标 —— 已经答了 2 轮</div>
+        </div>
+        <button class="btn btn-dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          继续训练
+        </button>
+      </div>
+
+      <h2 class="sec">数据</h2>
+      <div class="props">
+        <div class="prop"><span class="prop-k">记录总结</span><span class="prop-v dim">0 <span class="unit">条</span></span></div>
+        <div class="prop"><span class="prop-k">知识点</span><span class="prop-v">21 <span class="unit">个</span></span></div>
+        <div class="prop"><span class="prop-k">训练场次</span><span class="prop-v">2 <span class="unit">次</span></span></div>
+        <div class="prop"><span class="prop-k">平均得分</span><span class="prop-v dim">暂无</span></div>
+      </div>
+
+      <h2 class="sec">开始一次训练</h2>
+      <div class="pages">
+        <a class="page-item" href="#">
+          <span class="page-ico">🧩</span>
+          <span>
+            <div class="page-t">产品拆解</div>
+            <div class="page-s">拆一款产品的定位、结构、机制与商业化，竞品分析属于这一场景</div>
+          </span>
+        </a>
+        <a class="page-item" href="#">
+          <span class="page-ico">🔍</span>
+          <span>
+            <div class="page-t">需求调研</div>
+            <div class="page-s">把一句模糊诉求，拆成可验证的假设与调研方案</div>
+          </span>
+        </a>
+        <a class="page-item" href="#">
+          <span class="page-ico">🧭</span>
+          <span>
+            <div class="page-t">流程设计</div>
+            <div class="page-s">设计端到端业务流程、角色分工、异常分支与衡量指标</div>
+          </span>
+        </a>
+      </div>
+
+      <h2 class="sec">进行中</h2>
+      <div class="list">
+        <a class="li" href="#">
+          <span>
+            <div class="li-t">拆解 Notion</div>
+            <div class="li-s"><span class="tag blue">产品拆解</span>第 1 步 · 已答 2 轮</div>
+          </span>
+          <span class="li-meta">今天 00:55</span>
+        </a>
+        <a class="li" href="#">
+          <span>
+            <div class="li-t">给小米手机添加一个 AI 功能</div>
+            <div class="li-s"><span class="tag blue">需求调研</span>AI 助教引导 · 3 轮</div>
+          </span>
+          <span class="li-meta">今天 00:12</span>
+        </a>
+        <div class="empty">还没有记录总结 —— 读书、看文章、随手想到的都可以记在这里。</div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

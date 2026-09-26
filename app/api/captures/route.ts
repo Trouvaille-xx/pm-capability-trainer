@@ -1,4 +1,5 @@
-import { fail, handle, ok, optionalString, readBody, requireString, stringArray } from "@/lib/api";
+import { assertSameOrigin, fail, handle, ok, optionalString, readBody, requireString, stringArray, uniqueStringArray } from "@/lib/api";
+import { normalizeDomains } from "@/lib/catalog";
 import { newId, nowIso, readCollection, upsert } from "@/lib/store";
 import type { Capture, CaptureKind } from "@/lib/types";
 
@@ -15,6 +16,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   return handle(async () => {
+    assertSameOrigin(request);
     const body = await readBody<Capture>(request);
     const kind = KINDS.includes(body.kind as CaptureKind)
       ? (body.kind as CaptureKind)
@@ -30,12 +32,12 @@ export async function POST(request: Request) {
       status: ["inbox", "doing", "done"].includes(String(body.status))
         ? (body.status as Capture["status"])
         : "inbox",
-      tags: stringArray(body.tags),
+      tags: uniqueStringArray(body.tags),
       summary: optionalString(body.summary),
       keyPoints: stringArray(body.keyPoints, 30),
       thoughts: optionalString(body.thoughts),
       rating: typeof body.rating === "number" ? Math.max(0, Math.min(5, Math.round(body.rating))) : 0,
-      domains: stringArray(body.domains, 12),
+      domains: normalizeDomains(stringArray(body.domains, 12)),
       createdAt: now,
       updatedAt: now,
     };

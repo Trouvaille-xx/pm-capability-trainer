@@ -202,16 +202,25 @@ export default function TrainingSessionPage({
         let buffer = "";
         let answer = "";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          /* 先把控制帧摘出来（它们总是完整的单行），剩下的才是正文。
-             帧没接收完就先留着，等下一个分片。 */
-          while (buffer.startsWith(CTRL)) {
+        /* 控制帧可能出现在正文之后（例如生成中途出错），所以不能只看行首，
+           要在整个缓冲区里找分隔符。找到就把前面的正文吐出来、
+           再把完整的帧解析掉；帧没接收完就留着等下一个分片。 */
+        const consume = (flush: boolean) => {
+          while (true) {
+            const at = buffer.indexOf(CTRL);
+            if (at === -1) {
+              if (flush && buffer !== "") {
+                answer += buffer;
+                buffer = "";
+              }
+              return;
+            }
+            if (at > 0) {
+              answer += buffer.slice(0, at);
+              buffer = buffer.slice(at);
+            }
             const newline = buffer.indexOf("\n");
-            if (newline === -1) break;
+            if (newline === -1) return;
             const line = buffer.slice(1, newline);
             buffer = buffer.slice(newline + 1);
             try {
@@ -220,23 +229,32 @@ export default function TrainingSessionPage({
                 phase?: Phase;
                 traces?: ToolTrace[];
                 note?: string | null;
+                message?: string;
               };
               if (frame.type === "status" && frame.phase) setPhase(frame.phase);
               if (frame.type === "tools") {
                 setLiveTraces(frame.traces ?? []);
                 setToolNote(frame.note ?? null);
               }
+              /* 生成中断：错误只作提示，正文里不含它，
+                 所以落盘的历史对话是干净的。 */
+              if (frame.type === "error") {
+                setError(frame.message ?? "生成回答时出错");
+              }
             } catch {
               // 坏帧直接丢，不影响正文
             }
           }
+        };
 
-          if (buffer !== "" && !buffer.startsWith(CTRL)) {
-            answer += buffer;
-            buffer = "";
-            setStreaming(answer);
-          }
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          consume(false);
+          setStreaming(answer);
         }
+        consume(true);
 
         setStreaming("");
         setPhase("idle");

@@ -1,5 +1,6 @@
-import { fail, handle, ok, readBody } from "@/lib/api";
-import { readSettings, writeSettings } from "@/lib/store";
+import { assertSameOrigin, fail, handle, ok, readBody } from "@/lib/api";
+import { toPublicSettings } from "@/lib/settings";
+import { newId, readSettings, writeSettings } from "@/lib/store";
 import type { AISettings, MCPServer, WebSearchProvider } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,15 +15,19 @@ const WEB_SEARCH_PROVIDERS: WebSearchProvider[] = [
 
 export async function GET() {
   return handle(async () => {
-    // 本地单人应用：设置页需要回显，所以原样返回（data/ 已被 .gitignore 排除）
+    /* 本地单人应用，设置页需要回显——但密钥不回显。
+       只回传「配没配」的布尔量，明文留在 data/settings.json 里。 */
     const settings = await readSettings();
-    return ok(settings);
+    return ok(toPublicSettings(settings));
   });
 }
 
 export async function PUT(request: Request) {
   return handle(async () => {
+    assertSameOrigin(request);
+
     const body = await readBody<AISettings>(request);
+    const current = await readSettings();
     const changes: Partial<AISettings> = {};
 
     if (body.baseURL !== undefined) {
@@ -31,6 +36,8 @@ export async function PUT(request: Request) {
       if (!/^https?:\/\//i.test(baseURL)) return fail("Base URL 需要以 http:// 或 https:// 开头");
       changes.baseURL = baseURL.replace(/\/+$/, "");
     }
+    /* 密钥采用「三态」语义：不传 = 保持原值，传空串 = 清除，传值 = 更新。
+       前端因此不需要（也拿不到）回显明文。 */
     if (body.apiKey !== undefined) changes.apiKey = String(body.apiKey).trim();
     if (body.companyName !== undefined) {
       // 允许留空，留空时提示词里的 {company_name} 会退回默认值
@@ -38,19 +45,22 @@ export async function PUT(request: Request) {
     }
 
     if (body.webSearch !== undefined) {
-      const input = body.webSearch ?? {};
+      const input = body.webSearch ?? ({} as AISettings["webSearch"]);
       const provider = WEB_SEARCH_PROVIDERS.includes(input.provider)
         ? input.provider
-        : "duckduckgo";
+        : current.webSearch.provider;
       const maxResults = Number(input.maxResults);
       changes.webSearch = {
         enabled: input.enabled === true,
         provider,
-        apiKey: String(input.apiKey ?? "").trim(),
+        apiKey:
+          input.apiKey !== undefined
+            ? String(input.apiKey).trim()
+            : current.webSearch.apiKey,
         maxResults:
           Number.isFinite(maxResults) && maxResults >= 1 && maxResults <= 20
             ? Math.round(maxResults)
-            : 5,
+            : current.webSearch.maxResults,
       };
     }
 
@@ -58,6 +68,10 @@ export async function PUT(request: Request) {
       if (!Array.isArray(body.mcpServers)) {
         return fail("MCP 服务器列表格式不正确");
       }
+      // 按 id 取回原令牌，未提供 token 字段的服务器保持原令牌不变
+      const tokenById = new Map(
+        current.mcpServers.map((server) => [server.id, server.token]),
+      );
       const servers: MCPServer[] = [];
       for (const raw of body.mcpServers) {
         if (!raw || typeof raw !== "object") continue;
@@ -67,11 +81,15 @@ export async function PUT(request: Request) {
         if (url !== "" && !/^https?:\/\//i.test(url)) {
           return fail(`MCP 服务器「${name || url}」的地址需要以 http:// 或 https:// 开头`);
         }
+        const id = String(raw.id ?? "").trim() || newId("mcp");
         servers.push({
-          id: String(raw.id ?? "").trim() || `mcp_${servers.length + 1}`,
+          id,
           name: name || url,
           url,
-          token: String(raw.token ?? "").trim(),
+          token:
+            raw.token !== undefined
+              ? String(raw.token).trim()
+              : (tokenById.get(id) ?? ""),
           enabled: raw.enabled !== false,
         });
       }
@@ -96,6 +114,6 @@ export async function PUT(request: Request) {
     }
 
     const settings = await writeSettings(changes);
-    return ok(settings);
+    return ok(toPublicSettings(settings));
   });
 }

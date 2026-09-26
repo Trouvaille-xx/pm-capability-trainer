@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方向 A · 精密仪器 — 产品经理能力训练平台</title>
+<style>
+/* ==========================================================================
+   方向 A：精密仪器（Linear 主导）
+
+   设计读法：单人技能训练工作台，气质"精密、克制、工程感"。
+   三档旋钮：VARIANCE 5 / MOTION 5 / DENSITY 4
+
+   核心决策（对治"卡片太多像后台管理"）：
+   1. 杀死卡片作为布局单位。层级改由「发丝线 + 间距 + 字重」表达。
+      全页只保留 2 个真正的容器（主操作区、命令面板）。
+   2. 近黑底 + 纯白前景。Linear 的层次感来自"一块亮面板浮在暗底上"，
+      不是来自阴影堆叠。
+   3. 数字用等宽字体。这是"精密"最便宜也最有效的来源。
+   4. 唯一强调色 #5E6AD2，只出现在：当前选中、主操作、焦点环。
+   ========================================================================== */
+
+:root {
+  /* ---- 色板（4-6 个命名值，skill 要求） ---- */
+  --void:      #08090A;  /* 页面底：近黑，不是纯黑 */
+  --panel:     #0F1011;  /* 抬起一层 */
+  --panel-2:   #16171A;  /* 再抬一层 */
+  --hairline:  #23252A;  /* 发丝线，替代边框 */
+  --hairline-2:#2E3037;
+  --ink:       #F7F8F8;  /* 主文字：不要纯白，纯白在暗底上会晕 */
+  --ink-2:     #B4B8BF;
+  --ink-3:     #8A8F98;  /* Linear 的次要文字 */
+  --ink-4:     #5C6169;
+  --accent:    #5E6AD2;  /* Linear 靛蓝：唯一强调色 */
+  --accent-hi: #6E79DD;
+  --accent-lo: #3D478F;
+  --good:      #4CB782;
+
+  /* ---- 间距：严格 8px 基线，这是"精密"的来源 ---- */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+  /* ---- 圆角：只保留两档，且都很小 ---- */
+  --r-sm: 4px;
+  --r-md: 6px;
+
+  --font: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 13.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.006em;
+}
+
+/* ---------------------------------------------------------------- 骨架 */
+.app { display: grid; grid-template-columns: 208px 1fr; min-height: 100vh; }
+
+/* 侧栏：不用卡片，不用背景色差，只用一条发丝线分隔 */
+.rail {
+  border-right: 1px solid var(--hairline);
+  padding: var(--s5) var(--s3);
+  display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh;
+}
+.brand { display: flex; align-items: center; gap: 9px; padding: 0 var(--s2) var(--s5); }
+.brand-mark {
+  width: 22px; height: 22px; border-radius: var(--r-sm);
+  background: linear-gradient(140deg, var(--accent) 0%, var(--accent-lo) 100%);
+  display: grid; place-items: center; flex: none;
+}
+.brand-mark svg { width: 12px; height: 12px; stroke: #fff; }
+.brand-name { font-size: 12.5px; font-weight: 600; letter-spacing: -0.01em; }
+
+.nav-label {
+  font-size: 10.5px; font-weight: 500; color: var(--ink-4);
+  padding: 0 var(--s2) var(--s2); letter-spacing: 0.02em;
+}
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav a {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px var(--s2); border-radius: var(--r-sm);
+  color: var(--ink-3); text-decoration: none; font-size: 13px;
+  transition: background .14s var(--ease), color .14s var(--ease);
+}
+.nav a svg { width: 14px; height: 14px; flex: none; opacity: .85; }
+.nav a:hover { background: var(--panel-2); color: var(--ink-2); }
+/* 选中：不用蓝色实心块（那是后台管理的做法），只用一条左侧短线和提亮 */
+.nav a.on { color: var(--ink); position: relative; background: var(--panel-2); }
+.nav a.on::before {
+  content: ""; position: absolute; left: -12px; top: 50%;
+  width: 2px; height: 13px; margin-top: -6.5px;
+  background: var(--accent); border-radius: 1px;
+}
+.rail-foot { margin-top: auto; padding: var(--s3) var(--s2) 0; font-size: 11px; color: var(--ink-4); }
+
+/* ---------------------------------------------------------------- 主区 */
+.main { padding: var(--s6) var(--s7) var(--s8); max-width: 1080px; }
+
+/* 页头：不做大标题堆叠。标题 + 一行状态，然后用一条发丝线收口 */
+.head { padding-bottom: var(--s5); border-bottom: 1px solid var(--hairline); margin-bottom: var(--s6); }
+.head-row { display: flex; align-items: baseline; gap: var(--s4); }
+h1 { font-size: 21px; font-weight: 600; letter-spacing: -0.022em; }
+.head-meta { font-family: var(--mono); font-size: 11.5px; color: var(--ink-4); }
+.head-sub { color: var(--ink-3); font-size: 13px; margin-top: 5px; }
+
+/* 主操作区：全页唯一的"容器"。有边框，但没有阴影、没有大圆角 */
+.action {
+  border: 1px solid var(--hairline-2);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  padding: var(--s5);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s5); margin-bottom: var(--s6);
+}
+.action-copy h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.015em; margin-bottom: 3px; }
+.action-copy p { color: var(--ink-3); font-size: 12.5px; }
+.action-btns { display: flex; gap: var(--s2); flex: none; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: var(--r-sm);
+  font-size: 12.5px; font-weight: 500; cursor: pointer;
+  border: 1px solid var(--hairline-2); background: var(--panel-2); color: var(--ink-2);
+  transition: background .14s var(--ease), border-color .14s var(--ease), color .14s var(--ease);
+  font-family: inherit;
+}
+.btn:hover { background: #1D1F24; border-color: #383B43; color: var(--ink); }
+.btn svg { width: 13px; height: 13px; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 560; }
+.btn-primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); color: #fff; }
+
+/* 区块标题：不用装饰性 eyebrow，直接把标题做成结构 */
+.sec { margin-bottom: var(--s6); }
+.sec-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: var(--s3); margin-bottom: var(--s1);
+  border-bottom: 1px solid var(--hairline);
+}
+.sec-title { font-size: 12px; font-weight: 600; color: var(--ink-2); letter-spacing: -0.005em; }
+.sec-link { font-size: 12px; color: var(--ink-4); text-decoration: none; }
+.sec-link:hover { color: var(--accent-hi); }
+
+/* 统计：不用卡片！四个数字直接排在一条基线上，靠等宽字体和间距分层 */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); }
+.stat { padding: var(--s4) 0 var(--s4) var(--s4); border-left: 1px solid var(--hairline); }
+.stat:first-child { border-left: 0; padding-left: 0; }
+.stat-num {
+  font-family: var(--mono); font-size: 26px; font-weight: 500;
+  letter-spacing: -0.03em; line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.stat-num.dim { color: var(--ink-4); }
+.stat-label { font-size: 11.5px; color: var(--ink-4); margin-top: 3px; }
+
+/* 场景列表：不是三张卡，是三行。行与行之间发丝线，悬停时整行提亮 */
+.rows { display: flex; flex-direction: column; }
+.row {
+  display: grid; grid-template-columns: 26px 1fr auto;
+  align-items: center; gap: var(--s4);
+  padding: var(--s4) var(--s3); margin: 0 calc(var(--s3) * -1);
+  border-bottom: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  text-decoration: none; color: inherit;
+  transition: background .14s var(--ease);
+}
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--panel); }
+.row:hover .row-title { color: #fff; }
+.row:hover .row-arrow { opacity: 1; transform: translateX(0); }
+.row-ico {
+  width: 26px; height: 26px; border-radius: var(--r-sm);
+  display: grid; place-items: center; flex: none;
+  background: var(--panel-2); border: 1px solid var(--hairline-2);
+}
+.row-ico svg { width: 13px; height: 13px; stroke: var(--accent-hi); }
+.row-title { font-size: 13.5px; font-weight: 500; color: var(--ink-2); letter-spacing: -0.008em; transition: color .14s var(--ease); }
+.row-desc { font-size: 12px; color: var(--ink-4); margin-top: 2px; }
+.row-arrow { opacity: 0; transform: translateX(-4px); transition: all .16s var(--ease); color: var(--accent-hi); }
+.row-arrow svg { width: 14px; height: 14px; display: block; }
+
+/* 最近训练：两列，但不用卡片包，只用一条垂直发丝线做时间轴 */
+.recent { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s6); }
+.tl { border-left: 1px solid var(--hairline); padding-left: var(--s4); display: flex; flex-direction: column; gap: var(--s4); }
+.tl-item { position: relative; }
+.tl-item::before {
+  content: ""; position: absolute; left: calc(var(--s4) * -1 - 3.5px); top: 6px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--void); border: 1.5px solid var(--accent);
+}
+.tl-item.done::before { border-color: var(--ink-4); }
+.tl-title { font-size: 13px; font-weight: 500; color: var(--ink-2); letter-spacing: -0.006em; }
+.tl-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-4); margin-top: 4px; display: flex; gap: var(--s3); }
+.tl-badge { color: var(--accent-hi); }
+.tl-badge.done { color: var(--good); }
+
+.empty {
+  border: 1px dashed var(--hairline-2); border-radius: var(--r-md);
+  padding: var(--s5); color: var(--ink-4); font-size: 12.5px; text-align: center;
+}
+
+/* 焦点可见（skill 要求的 quality floor） */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16 10 8l4 5 6-8"/></svg>
+      </span>
+      <span class="brand-name">能力训练平台</span>
+    </div>
+    <div class="nav-label">工作台</div>
+    <nav class="nav">
+      <a class="on" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>概览</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>记录总结</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg>方法论</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>AI 训练师</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>辅助系统</a>
+    </nav>
+    <div class="rail-foot">今日已练 0 分钟</div>
+  </aside>
+
+  <main class="main">
+
+    <header class="head">
+      <div class="head-row">
+        <h1>概览</h1>
+        <span class="head-meta">2026-09-25 · 周五</span>
+      </div>
+      <p class="head-sub">两次训练都在进行中。继续其中一次，或开一个新的。</p>
+    </header>
+
+    <!-- 主操作：全页唯一容器 -->
+    <section class="action">
+      <div class="action-copy">
+        <h2>继续「拆解 Notion」</h2>
+        <p>第 1 步 · 确认拆解目标 —— 已经答了 2 轮</p>
+      </div>
+      <div class="action-btns">
+        <button class="btn btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          继续训练
+        </button>
+        <button class="btn">新的训练</button>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <span class="sec-title">数据</span>
+        <a class="sec-link" href="#">全部记录</a>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-num dim">0</div>
+          <div class="stat-label">记录总结</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">21</div>
+          <div class="stat-label">知识点</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num">2</div>
+          <div class="stat-label">训练场次</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num dim">—</div>
+          <div class="stat-label">平均得分</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head"><span class="sec-title">开始一次训练</span></div>
+      <div class="rows">
+        <a class="row" href="#">
+          <span class="row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+          <span>
+            <div class="row-title">产品拆解</div>
+            <div class="row-desc">拆一款产品的定位、结构、机制与商业化，竞品分析属于这一场景</div>
+          </span>
+          <span class="row-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>
+        </a>
+        <a class="row" href="#">
+          <span class="row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
+          <span>
+            <div class="row-title">需求调研</div>
+            <div class="row-desc">把一句模糊诉求，拆成可验证的假设与调研方案</div>
+          </span>
+          <span class="row-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>
+        </a>
+        <a class="row" href="#">
+          <span class="row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 4v16"/><path d="M5 6h9l-1.2 3L14 12H5"/><circle cx="18" cy="17" r="2.6"/></svg></span>
+          <span>
+            <div class="row-title">流程设计</div>
+            <div class="row-desc">设计端到端业务流程、角色分工、异常分支与衡量指标</div>
+          </span>
+          <span class="row-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>
+        </a>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head"><span class="sec-title">进行中</span></div>
+      <div class="recent">
+        <div class="tl">
+          <div class="tl-item">
+            <div class="tl-title">拆解 Notion</div>
+            <div class="tl-meta"><span>产品拆解</span><span>5 轮</span><span class="tl-badge">第 1 步</span></div>
+          </div>
+          <div class="tl-item">
+            <div class="tl-title">给小米手机添加一个 AI 功能</div>
+            <div class="tl-meta"><span>需求调研</span><span>3 轮</span><span class="tl-badge">进行中</span></div>
+          </div>
+        </div>
+        <div class="empty">还没有记录总结<br><span style="color:var(--ink-4);font-size:11.5px">读书、看文章、随手想到的都可以记在这里</span></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

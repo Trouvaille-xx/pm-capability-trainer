@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>能力训练平台 · 词条</title>
+<style>
+/* ==========================================================================
+   词条 · Lexicon
+   --------------------------------------------------------------------------
+   调性来自内容本身：你的数据结构就是一本词典的词条
+   （headword / 定义 / 详解 / 用法 / 例句），所以界面应该像一本书。
+
+   设计读法：这是印刷品，不是应用。
+   - 没有卡片、没有阴影、没有徽章、没有图标装饰
+   - 层级只由三样东西表达：字号、字重、留白
+   - 黑白灰，唯一点缀色 #C0392B 用于「你正在这里」
+   - 严格栏宽（正文 62ch），这是印刷品的纪律
+
+   三档旋钮：VARIANCE 3（书不需要不对称）/ MOTION 2（书不跳）/ DENSITY 5
+   ========================================================================== */
+
+:root{
+  /* 纯黑白灰，5 档 */
+  --paper: #FFFFFF;
+  --ink:   #111111;   /* 标题/正文 */
+  --ink-2: #4A4A4A;   /* 次要正文 */
+  --ink-3: #8A8A8A;   /* 元信息 */
+  --ink-4: #B8B8B8;   /* 占位 */
+  --rule:  #E4E4E4;   /* 细分隔线 */
+  --rule-2:#F2F2F2;
+  --mark:  #C0392B;   /* 唯一点缀色：朱砂。只标「当前」 */
+
+  /* 字体：衬线做标题（书的调性），无衬线做正文（屏幕可读）*/
+  --serif: "Source Han Serif SC", "Songti SC", "SimSun",
+           "Iowan Old Style", "Palatino", Georgia, serif;
+  --sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+           "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono:  ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --lh: 1.85;         /* 正文行高：印刷品的呼吸 */
+  --measure: 34em;    /* 栏宽 ≈ 62 个中文字符 */
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  background:var(--paper);color:var(--ink);
+  font-family:var(--sans);font-size:15px;line-height:var(--lh);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+/* ============================================================ 版心
+   整页只有一个版心，居中。左右留白不对称（书是装订在左的）。*/
+.page{
+  max-width:760px;margin:0 auto;
+  padding:64px 56px 140px 72px;
+}
+
+/* ============================================================ 书眉
+   像书的页眉：左侧书名，右侧页码。滚动时钉住。*/
+.running-head{
+  position:sticky;top:0;z-index:30;
+  margin:0 -56px 0 -72px;
+  padding:9px 56px 9px 72px;
+  background:rgba(255,255,255,.9);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--rule);
+  display:flex;align-items:center;gap:16px;
+  font-size:11.5px;color:var(--ink-3);
+  transition:opacity .3s;
+}
+.rh-title{font-family:var(--serif);font-size:12.5px;letter-spacing:.02em;color:var(--ink-2)}
+.rh-sep{color:var(--ink-4)}
+.rh-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+/* 书眉上的跳转：文字，不是图标 */
+.rh-link{
+  color:var(--ink-3);text-decoration:none;font-size:11.5px;
+  border-bottom:1px solid transparent;transition:all .18s;
+  cursor:pointer;background:none;border:0;font-family:inherit;padding:0;
+}
+.rh-link:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.rh-link.here{color:var(--mark);font-weight:600}
+
+/* ============================================================ 标题区
+   书的扉页：大衬线标题 + 一行说明，没有别的。*/
+.masthead{padding:52px 0 30px;border-bottom:2px solid var(--ink);margin-bottom:44px}
+.masthead h1{
+  font-family:var(--serif);font-size:46px;font-weight:600;
+  line-height:1.16;letter-spacing:.01em;
+}
+.masthead .sub{
+  margin-top:12px;font-size:14px;color:var(--ink-3);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.masthead .sub .dot{width:3px;height:3px;border-radius:50%;background:var(--ink-4)}
+
+/* ============================================================ 检索
+   像一本书的索引检索。朴素的一条线，没有圆角框、没有放大镜图标。*/
+.lookup{margin-bottom:52px}
+.lookup-row{
+  display:flex;align-items:baseline;gap:12px;
+  border-bottom:1px solid var(--ink);padding-bottom:9px;
+}
+.lookup-row input{
+  flex:1;border:0;outline:0;font-family:var(--serif);font-size:21px;
+  background:transparent;color:var(--ink);padding:0;
+}
+.lookup-row input::placeholder{color:var(--ink-4);font-style:italic}
+.lookup-hint{font-size:11.5px;color:var(--ink-4);white-space:nowrap;font-family:var(--mono)}
+/* 领域筛选：文字标签，用下划线表示选中 */
+.filters{margin-top:16px;display:flex;flex-wrap:wrap;gap:22px;font-size:13px}
+.filters button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:13px;
+  color:var(--ink-3);cursor:pointer;position:relative;
+  transition:color .18s;
+}
+.filters button:hover{color:var(--ink-2)}
+.filters button.on{color:var(--ink);font-weight:600}
+.filters button.on::after{
+  content:"";position:absolute;left:0;right:0;bottom:-4px;
+  height:2px;background:var(--mark);
+}
+.filters .count{color:var(--ink-4);font-size:11px;margin-left:1px;font-weight:400}
+
+/* ============================================================ 词条
+   这是核心。像词典的一个词条：
+   headword 大衬线 / 定义一行 / 下面分栏放详解与用法。*/
+.entry{
+  padding:30px 0 32px;border-bottom:1px solid var(--rule);
+  position:relative;
+}
+.entry:last-child{border-bottom:0}
+/* 左侧的标记线：只在"当前训练涉及"的词条上出现 */
+.entry.flagged::before{
+  content:"";position:absolute;left:-26px;top:34px;bottom:34px;
+  width:2px;background:var(--mark);
+}
+
+.headword-row{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.headword{
+  font-family:var(--serif);font-size:25px;font-weight:600;
+  letter-spacing:.01em;line-height:1.3;
+}
+.domain{
+  font-size:11.5px;color:var(--ink-3);
+  font-family:var(--mono);letter-spacing:.04em;
+}
+.flagged-note{
+  font-size:11px;color:var(--mark);font-weight:600;
+  display:inline-flex;align-items:center;gap:5px;
+}
+.flagged-note::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--mark)}
+
+/* 定义：句子本身，稍大一点、稍重一点 —— 词典里的释义 */
+.definition{
+  margin-top:10px;font-size:16.5px;line-height:1.75;color:var(--ink);
+  max-width:var(--measure);
+}
+/* 详解：正文，灰色，是"读"的部分 */
+.explain{
+  margin-top:14px;font-size:14.5px;color:var(--ink-2);
+  max-width:var(--measure);line-height:1.9;
+}
+/* 用法：带左侧细线的引用块 —— 印刷品里表示"旁注" */
+.usage{
+  margin-top:18px;padding-left:16px;border-left:2px solid var(--rule);
+  font-size:14px;color:var(--ink-2);max-width:var(--measure);
+}
+.usage-label{
+  font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  letter-spacing:.1em;display:block;margin-bottom:5px;
+}
+/* 例句：楷体或斜体，区别于正文 */
+.example{
+  margin-top:14px;font-family:var(--serif);font-size:14.5px;
+  color:var(--ink-3);font-style:italic;
+  max-width:var(--measure);line-height:1.85;
+}
+
+/* 词条底部的动作：文字，不是按钮 */
+.entry-actions{
+  margin-top:20px;display:flex;gap:20px;font-size:12.5px;
+}
+.entry-actions button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:12.5px;
+  color:var(--ink-4);cursor:pointer;
+  border-bottom:1px solid transparent;transition:all .18s;
+}
+.entry-actions button:hover{color:var(--ink-2);border-bottom-color:var(--ink-4)}
+.entry-actions button.primary{color:var(--mark)}
+.entry-actions button.primary:hover{color:var(--mark);border-bottom-color:var(--mark)}
+
+/* 展开的完整内容 */
+.entry-more{
+  display:none;margin-top:22px;padding-top:20px;border-top:1px dashed var(--rule);
+}
+.entry.open .entry-more{display:block;animation:fadeIn .35s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.field-row{display:flex;gap:11px;margin-bottom:13px;font-size:14px;max-width:var(--measure)}
+.field-k{
+  font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  letter-spacing:.08em;width:52px;flex:none;padding-top:4px;
+}
+.field-v{color:var(--ink-2);line-height:1.85}
+.scenario-chips{margin-top:16px;display:flex;gap:18px;font-size:12.5px;color:var(--ink-3)}
+.scenario-chips span{display:flex;align-items:center;gap:6px}
+.scenario-chips span::before{content:"";width:4px;height:4px;background:var(--ink-4);border-radius:50%}
+
+/* ============================================================ 卷末
+   像书的版权页 / 索引页脚 */
+.colophon{
+  margin-top:64px;padding-top:26px;border-top:1px solid var(--rule);
+  font-size:12px;color:var(--ink-4);line-height:2;
+  display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;
+}
+.colophon b{color:var(--ink-3);font-weight:600}
+
+/* 分隔符：印刷品的分节符 */
+.dinkus{
+  text-align:center;color:var(--ink-4);font-size:13px;
+  letter-spacing:.7em;margin:44px 0 40px;user-select:none;
+}
+
+/* ============================================================ 浮动：回到顶部
+   最小的一个圆，不带颜色 */
+.totop{
+  position:fixed;right:36px;bottom:36px;width:34px;height:34px;
+  border-radius:50%;border:1px solid var(--rule);background:var(--paper);
+  color:var(--ink-3);cursor:pointer;display:grid;place-items:center;
+  opacity:0;pointer-events:none;transition:all .28s;
+}
+.totop.show{opacity:1;pointer-events:auto}
+.totop:hover{border-color:var(--ink-3);color:var(--ink)}
+.totop svg{width:14px;height:14px}
+
+/* ============================================================ 训练入口
+   不做成一整块横幅，做成书里的一则告示 —— 上方双线，下方单线 */
+.notice{
+  margin:0 0 52px;padding:20px 0;
+  border-top:1px solid var(--ink);border-bottom:1px solid var(--rule);
+  display:flex;align-items:baseline;justify-content:space-between;gap:24px;flex-wrap:wrap;
+}
+.notice-l{font-size:14px;color:var(--ink-2)}
+.notice-l b{font-family:var(--serif);font-size:15.5px;font-weight:600}
+.notice-l .small{display:block;font-size:12.5px;color:var(--ink-3);margin-top:3px}
+.notice-actions{display:flex;gap:22px;font-size:13px;flex:none}
+.notice-actions button{
+  background:none;border:0;padding:0;font-family:inherit;font-size:13px;
+  cursor:pointer;border-bottom:1px solid transparent;transition:all .18s;
+  color:var(--ink-3);
+}
+.notice-actions button:hover{color:var(--ink);border-bottom-color:var(--ink-4)}
+.notice-actions button.go{color:var(--mark);font-weight:600}
+.notice-actions button.go:hover{border-bottom-color:var(--mark)}
+
+/* 键盘聚焦可见 */
+:focus-visible{outline:1.5px solid var(--mark);outline-offset:3px}
+
+/* 选中文字用点缀色，很淡 */
+::selection{background:rgba(192,57,43,.14)}
+
+@media (max-width:720px){
+  .page{padding:32px 22px 100px}
+  .running-head{margin:0 -22px;padding:9px 22px}
+  .masthead h1{font-size:34px}
+  .entry.flagged::before{left:-12px}
+  .totop{right:18px;bottom:18px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- 书眉 -->
+  <div class="running-head">
+    <span class="rh-title">能力训练平台</span>
+    <span class="rh-sep">·</span>
+    <span>方法论</span>
+    <div class="rh-right">
+      <button class="rh-link" onclick="go(0)">概览</button>
+      <button class="rh-link" onclick="go(1)">记录总结</button>
+      <button class="rh-link here">方法论</button>
+      <button class="rh-link" onclick="go(3)">AI 训练师</button>
+      <button class="rh-link" onclick="go(4)">辅助系统</button>
+    </div>
+  </div>
+
+  <!-- 扉页 -->
+  <header class="masthead">
+    <h1>方法论</h1>
+    <div class="sub">
+      <span>21 个词条</span><span class="dot"></span>
+      <span>8 个领域</span><span class="dot"></span>
+      <span>其中 2 个正在训练中</span>
+    </div>
+  </header>
+
+  <!-- 训练告示 -->
+  <section class="notice">
+    <div class="notice-l">
+      <b>拆解 Notion</b> 停在第 1 步
+      <span class="small">确认拆解目标 —— 已答 2 轮，缺「拆解目标」与「目标用户」两项</span>
+    </div>
+    <div class="notice-actions">
+      <button class="go">继续这一步</button>
+      <button onclick="alert('新建训练')">开始新的训练</button>
+    </div>
+  </section>
+
+  <!-- 检索 -->
+  <section class="lookup">
+    <div class="lookup-row">
+      <input id="q" placeholder="查一个词条…" autocomplete="off">
+      <span class="lookup-hint">21 条中检索</span>
+    </div>
+    <div class="filters" id="filters"></div>
+  </section>
+
+  <!-- 词条列表 -->
+  <main id="entries"></main>
+
+  <div class="dinkus">∗ ∗ ∗</div>
+
+  <!-- 卷末信息 -->
+  <footer class="colophon">
+    <span>
+      <b>方法论</b> · 21 个词条<br>
+      领域：心理学 5 · 经济学 3 · 商业与战略 3 · 产品设计 3<br>
+      用户研究 3 · 数据与分析 2 · 项目管理 1 · 增长与运营 1
+    </span>
+    <span style="text-align:right">
+      最近更新 2026-09-24<br>
+      标记 <span style="color:var(--mark)">▎</span> 表示该词条与进行中的训练相关<br>
+      共 1 页
+    </span>
+  </footer>
+
+</div>
+
+<button class="totop" id="totop" onclick="scrollTo({top:0,behavior:'smooth'})" aria-label="回到顶部">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+</button>
+
+<script>
+/* ============================================================
+   真实数据：从 data/methodology.json 抄来的前 6 个词条
+   ============================================================ */
+const ENTRIES = [
+  {
+    domain:"心理学",
+    title:"损失厌恶",
+    oneLiner:"同样大小的得失，失去带来的痛苦大约是得到带来的快乐的两倍。",
+    detail:"人在面对收益时倾向规避风险，面对损失时反而倾向冒险。这让用户对「失去已有权益」的反应远强于「获得同等新权益」。边界：当损失很小或反复出现时会钝化；对不熟悉的领域参照点不明确，效应减弱。常见误区：把所有促销都做成「限时折扣」，其实对已付费用户而言，涨价预警比折扣更能驱动行动。",
+    howToUse:"设计留存、续费、迁移类功能时，先想清楚用户此刻的「参照点」是什么，再去构造损失；把免费额度、已积累的数据、已获得的等级当成参照点。",
+    example:"网盘续费页强调「你的 2,000 张照片将被压缩」而不是「续费立减 10 元」；后者是收益，前者是损失。",
+    scenarios:["product-teardown","process-design"],
+    flagged:true
+  },
+  {
+    domain:"心理学",
+    title:"认知负荷",
+    oneLiner:"工作记忆一次只能处理少量信息，超出部分会被直接放弃。",
+    detail:"认知负荷分三类：内在负荷（任务本身难度）、外在负荷（界面与表达造成的额外负担）、关联负荷（用于建立理解的有益难度）。设计能优化的是外在负荷，砍掉它才能把有限的工作记忆让给真正的任务。",
+    howToUse:"表单、向导、配置页优先做「减负」：能推断的不问、能默认的不选、能分步的不堆在一屏。但不要把需要思考的关联负荷也一起砍掉。",
+    example:"结算页把「收货地址」默认带入上次地址，用户只需确认，而不是重新填六个字段。",
+    scenarios:["product-teardown","process-design"],
+    flagged:true
+  },
+  {
+    domain:"心理学",
+    title:"峰终定律",
+    oneLiner:"人对一段体验的评价，主要由最高峰和结束时的感受决定，与过程长短无关。",
+    detail:"体验自我与记忆自我是两套系统。记忆不记录平均，只记录极值与结尾。这意味着一段很长的平庸体验，只要结尾漂亮，整体评价就会偏高。",
+    howToUse:"把资源集中在两个位置：过程的最高峰，以及结束的那一下。中途的均匀投入几乎不产生记忆。",
+    example:"宜家的 1 元冰淇淋放在出口，不是因为便宜，是因为它是整段购物体验的「最后一下」。",
+    scenarios:["product-teardown"],
+    flagged:false
+  },
+  {
+    domain:"心理学",
+    title:"锚定效应",
+    oneLiner:"最先出现的数字会成为一个参考点，影响后续所有判断。",
+    detail:"锚定即便在被明确告知「这个数字是随机的」之后依然生效。它作用在无意识层面，所以不能靠「保持理性」来规避。",
+    howToUse:"定价页先展示贵的方案，再展示你想卖的方案；谈判时先出价的一方通常占据优势。",
+    example:"订阅页把 Enterprise 放在最左，个人版放右侧，「¥68/月」就显得合理了。",
+    scenarios:["product-teardown"],
+    flagged:false
+  },
+  {
+    domain:"心理学",
+    title:"确认偏误",
+    oneLiner:"人倾向于寻找支持自己已有观点的证据，而忽略相反的证据。",
+    detail:"这在用户调研里造成双重损害：研究者会问出引导性问题，受访者也会给出迎合性回答。",
+    howToUse:"访谈时先问行为（你上次怎么做），再问态度（你觉得怎么样）。前者比后者难被污染。",
+    example:"「你觉得这个功能有用吗」永远得到「有用」；「你上次遇到这个问题时做了什么」才能得到真实信息。",
+    scenarios:["requirement-research"],
+    flagged:false
+  },
+  {
+    domain:"经济学",
+    title:"机会成本",
+    oneLiner:"为了得到某样东西而放弃的、价值最高的那个替代选项。",
+    detail:"成本不是花掉的钱，而是放弃了的最好选择。做功能时真正的成本是团队这段时间不能做的事。",
+    howToUse:"排优先级时，把每个需求换算成「不做它就能做什么」，比换算成「开发要几天」更接近真实决策。",
+    example:"这个需求要 2 个迭代，意味着推荐系统改版要推迟到下季度 —— 后者才是它的成本。",
+    scenarios:["process-design","requirement-research"],
+    flagged:false
+  }
+];
+
+/* 领域统计 */
+const DOMAINS = [
+  ["全部",21],["心理学",5],["经济学",3],["商业与战略",3],["产品设计",3],
+  ["用户研究",3],["数据与分析",2],["项目管理",1],["增长与运营",1]
+];
+
+const SCENARIO_NAME = {
+  "product-teardown":"产品拆解",
+  "process-design":"流程设计",
+  "requirement-research":"需求调研"
+};
+
+let activeDomain = "全部";
+let keyword = "";
+
+/* ---------------------------------------------------------- 渲染 */
+const entriesEl = document.getElementById("entries");
+
+function render(){
+  const list = ENTRIES.filter(e=>{
+    if(activeDomain !== "全部" && e.domain !== activeDomain) return false;
+    if(keyword){
+      const k = keyword.toLowerCase();
+      return (e.title+e.oneLiner+e.detail).toLowerCase().includes(k);
+    }
+    return true;
+  });
+
+  if(!list.length){
+    entriesEl.innerHTML = `<div style="padding:48px 0;color:var(--ink-4);font-size:14px;font-style:italic">
+      没有找到「${escapeHtml(keyword)}」这个词条。<br>
+      <span style="font-size:13px">可以到「记录总结」里把它摘录进来。</span>
+    </div>`;
+    return;
+  }
+
+  entriesEl.innerHTML = list.map((e,i)=>`
+    <article class="entry${e.flagged?" flagged":""}" data-i="${i}">
+      <div class="headword-row">
+        <h2 class="headword">${escapeHtml(e.title)}</h2>
+        <span class="domain">${escapeHtml(e.domain)}</span>
+        ${e.flagged?`<span class="flagged-note">正在训练中使用</span>`:""}
+      </div>
+
+      <p class="definition">${escapeHtml(e.oneLiner)}</p>
+      <p class="explain">${escapeHtml(e.detail)}</p>
+
+      <div class="usage">
+        <span class="usage-label">怎么用</span>
+        ${escapeHtml(e.howToUse)}
+      </div>
+
+      <p class="example">例：${escapeHtml(e.example)}</p>
+
+      <div class="entry-more">
+        <div class="field-row">
+          <span class="field-k">领域</span>
+          <span class="field-v">${escapeHtml(e.domain)}</span>
+        </div>
+        <div class="field-row">
+          <span class="field-k">适用</span>
+          <span class="field-v">${e.scenarios.map(s=>SCENARIO_NAME[s]||s).join("、")}</span>
+        </div>
+        <div class="field-row">
+          <span class="field-k">来源</span>
+          <span class="field-v" style="color:var(--ink-3)">内置词条 · 尚未关联摘录</span>
+        </div>
+        <div class="scenario-chips">
+          <span>在 2 次训练中被引用过</span>
+        </div>
+      </div>
+
+      <div class="entry-actions">
+        <button class="primary" onclick="startTraining('${escapeHtml(e.title)}')">用它练一次</button>
+        <button onclick="toggleEntry(${i}, this)">展开全部</button>
+        <button onclick="alert('编辑：${escapeHtml(e.title)}')">编辑</button>
+      </div>
+    </article>
+  `).join("");
+
+  // 若筛选后只剩少量，提示一下
+  if(list.length < ENTRIES.length){
+    entriesEl.insertAdjacentHTML("beforeend",
+      `<div style="padding:24px 0;font-size:12.5px;color:var(--ink-4)">
+        已显示 ${list.length} / ${ENTRIES.length} 个词条
+      </div>`);
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function toggleEntry(i, btn){
+  const el = entriesEl.querySelector(`.entry[data-i="${i}"]`);
+  el.classList.toggle("open");
+  btn.textContent = el.classList.contains("open") ? "收起" : "展开全部";
+}
+
+function startTraining(title){
+  alert(`以「${title}」为主题开始训练`);
+}
+
+/* ---------------------------------------------------------- 筛选 */
+const filtersEl = document.getElementById("filters");
+filtersEl.innerHTML = DOMAINS.map(([name,count])=>
+  `<button${name===activeDomain?' class="on"':''} data-d="${name}">
+     ${name}<span class="count">${count}</span>
+   </button>`
+).join("");
+
+filtersEl.addEventListener("click", e=>{
+  const b = e.target.closest("button[data-d]");
+  if(!b) return;
+  activeDomain = b.dataset.d;
+  filtersEl.querySelectorAll("button").forEach(x=>x.classList.toggle("on", x===b));
+  render();
+});
+
+/* ---------------------------------------------------------- 检索 */
+const q = document.getElementById("q");
+let t;
+q.addEventListener("input", ()=>{
+  clearTimeout(t);
+  t = setTimeout(()=>{ keyword = q.value.trim(); render(); }, 140);
+});
+/* 按 / 聚焦检索 —— 书的检索习惯 */
+addEventListener("keydown", e=>{
+  if(e.key === "/" && document.activeElement !== q){
+    e.preventDefault(); q.focus(); q.select();
+  }
+  if(e.key === "Escape" && document.activeElement === q){
+    q.value = ""; keyword = ""; render(); q.blur();
+  }
+});
+
+/* ---------------------------------------------------------- 其他 */
+const totop = document.getElementById("totop");
+addEventListener("scroll", ()=>{
+  totop.classList.toggle("show", scrollY > 600);
+}, {passive:true});
+
+function go(i){
+  const names = ["概览","记录总结","方法论","AI 训练师","辅助系统"];
+  if(names[i] === "方法论") return;
+  alert("跳转到「" + names[i] + "」");
+}
+
+render();
+</script>
+</body>
+</html>

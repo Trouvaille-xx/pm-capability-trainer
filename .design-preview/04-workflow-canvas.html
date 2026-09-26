@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>04 · 画布 / Workflow Canvas</title>
+<style>
+/* ==========================================================================
+   方向 04：画布 · Workflow Canvas
+   --------------------------------------------------------------------------
+   设计读法：把"训练"当成一张可以俯瞰的工作流图，而不是一列卡片。
+   导航：左侧极窄图标栏（悬停展开文字，48px→200px）
+   动效：侧栏展开推挤内容 + 画布节点连线生长 + 拖拽平移
+   底色：冷调浅灰
+
+   核心决策：
+   1. 这是五个方向里唯一保留左侧栏的 —— 但它只有 48px，
+      而且悬停才展开。形态完全不同：它是"工具栏"，不是"目录"。
+   2. 首页主体是一块可平移的画布：训练是节点，流程是连线。
+      你可以一眼看到"我在哪、接下来去哪"。
+   3. 强调色 #0F766E（深青），冷静、不像普通 SaaS 蓝。
+   ========================================================================== */
+
+:root{
+  --bg:#F1F3F5; --card:#FFFFFF; --ink:#0C1116; --ink-2:#3A444E;
+  --ink-3:#69737D; --ink-4:#98A2AC; --rule:#DFE3E7; --rule-2:#EDF0F2;
+  --accent:#0F766E; --accent-2:#0D5F59; --accent-w:#ECFDF5; --accent-l:#A7F3D0;
+  --warn:#B45309; --warn-w:#FEF3C7;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;
+  --font:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI","PingFang SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --spring:cubic-bezier(.34,1.5,.64,1);
+  --rail:52px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--font);
+  font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  overflow:hidden;height:100vh;
+}
+
+.app{display:flex;height:100vh}
+
+/* ============================================================ 极窄侧栏 */
+.rail{
+  width:var(--rail);flex:none;background:var(--card);
+  border-right:1px solid var(--rule);
+  display:flex;flex-direction:column;align-items:center;
+  padding:var(--s3) 0;gap:var(--s1);z-index:40;
+  transition:width .3s var(--ease);
+  overflow:hidden;
+}
+.rail:hover{width:196px;align-items:stretch;padding-left:0;padding-right:0}
+.rail:hover .r-item{justify-content:flex-start;padding-left:15px}
+.rail:hover .r-text{opacity:1;transform:none}
+.rail:hover .r-logo-text{opacity:1;transform:none}
+
+.r-logo{
+  width:100%;height:42px;display:flex;align-items:center;justify-content:center;
+  margin-bottom:var(--s3);flex:none;
+}
+.rail:hover .r-logo{justify-content:flex-start;padding-left:15px}
+.r-mark{
+  width:24px;height:24px;border-radius:7px;background:var(--accent);
+  display:grid;place-items:center;flex:none;
+}
+.r-mark svg{width:13px;height:13px;stroke:#fff}
+.r-logo-text{
+  font-size:13px;font-weight:680;letter-spacing:-.02em;margin-left:10px;
+  opacity:0;transform:translateX(-6px);transition:all .25s var(--ease);white-space:nowrap;
+}
+.r-item{
+  width:100%;height:40px;display:flex;align-items:center;justify-content:center;
+  gap:11px;color:var(--ink-3);text-decoration:none;cursor:pointer;
+  border:0;background:transparent;font-family:inherit;font-size:13.5px;
+  position:relative;transition:color .2s var(--ease),background .2s var(--ease);
+}
+.r-item svg{width:18px;height:18px;flex:none}
+.r-item:hover{background:var(--rule-2);color:var(--ink)}
+.r-item.on{color:var(--accent);background:var(--accent-w);font-weight:620}
+.r-item.on::before{
+  content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+  width:3px;height:20px;background:var(--accent);border-radius:0 3px 3px 0;
+}
+.r-text{
+  opacity:0;transform:translateX(-6px);transition:all .25s var(--ease);
+  white-space:nowrap;font-size:13.5px;
+}
+.r-sp{flex:1}
+.r-badge{
+  position:absolute;top:7px;left:29px;min-width:15px;height:15px;padding:0 4px;
+  border-radius:8px;background:var(--accent);color:#fff;font-size:9.5px;
+  font-weight:700;display:grid;place-items:center;font-family:var(--mono);
+}
+
+/* ============================================================ 主区 */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+
+.topbar{
+  height:54px;flex:none;display:flex;align-items:center;gap:var(--s4);
+  padding:0 var(--s5);background:rgba(255,255,255,.86);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--rule);z-index:30;
+}
+.crumb{display:flex;align-items:center;gap:7px;font-size:13.5px}
+.crumb .sep{color:var(--ink-4)}
+.crumb b{font-weight:640;letter-spacing:-.015em}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:8px}
+.tb-btn{
+  height:31px;padding:0 12px;border-radius:8px;border:1px solid var(--rule);
+  background:var(--card);color:var(--ink-3);font-size:12.5px;cursor:pointer;
+  font-family:inherit;display:flex;align-items:center;gap:6px;
+  transition:all .18s var(--ease);
+}
+.tb-btn:hover{border-color:#CBD2D9;color:var(--ink-2);box-shadow:0 2px 7px -2px rgba(12,17,22,.1)}
+.tb-btn svg{width:14px;height:14px}
+.tb-btn.on{background:var(--accent-w);border-color:var(--accent-l);color:var(--accent)}
+.zoom{display:flex;align-items:center;gap:2px;border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:var(--card)}
+.zoom button{width:28px;height:29px;border:0;background:transparent;cursor:pointer;color:var(--ink-3);display:grid;place-items:center}
+.zoom button:hover{background:var(--rule-2);color:var(--ink)}
+.zoom span{font-family:var(--mono);font-size:11px;color:var(--ink-4);padding:0 4px;min-width:38px;text-align:center}
+
+/* ============================================================ 画布 */
+.stage{
+  flex:1;position:relative;overflow:hidden;cursor:grab;
+  /* 点阵网格：画布感 */
+  background-image:radial-gradient(circle,var(--rule) 1px,transparent 1px);
+  background-size:22px 22px;
+  background-position:0 0;
+}
+.stage.grabbing{cursor:grabbing}
+.canvas{
+  position:absolute;top:0;left:0;width:100%;height:100%;
+  transform-origin:0 0;
+  transition:transform .34s var(--ease);
+}
+
+/* 连线（SVG） */
+svg.wires{position:absolute;top:0;left:0;width:2200px;height:1400px;pointer-events:none}
+.wire{fill:none;stroke:var(--rule);stroke-width:1.6}
+.wire.active{stroke:var(--accent);stroke-width:2}
+.wire-anim{
+  stroke-dasharray:5 5;
+  animation:dash 22s linear infinite;
+}
+@keyframes dash{to{stroke-dashoffset:-220}}
+.wire.flow{stroke:var(--accent-l)}
+
+/* 节点 */
+.node{
+  position:absolute;background:var(--card);border:1px solid var(--rule);
+  border-radius:13px;padding:15px 17px;min-width:212px;
+  box-shadow:0 1px 2px rgba(12,17,22,.05),0 6px 18px -10px rgba(12,17,22,.14);
+  cursor:pointer;user-select:none;
+  transition:transform .28s var(--spring),box-shadow .28s var(--ease),border-color .28s var(--ease);
+  opacity:0;animation:nodeIn .6s var(--spring) forwards;
+}
+@keyframes nodeIn{from{opacity:0;transform:translateY(14px) scale(.94)}to{opacity:1;transform:none}}
+.node:hover{
+  transform:translateY(-4px) scale(1.02);
+  box-shadow:0 4px 8px rgba(12,17,22,.06),0 18px 44px -16px rgba(12,17,22,.26);
+  border-color:var(--accent-l);z-index:10;
+}
+.node.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-w),0 8px 26px -10px rgba(15,118,110,.3)}
+.node-num{
+  font-family:var(--mono);font-size:10px;font-weight:700;color:var(--ink-4);
+  display:flex;align-items:center;gap:6px;margin-bottom:7px;
+}
+.node.active .node-num{color:var(--accent)}
+.node-t{font-size:14px;font-weight:640;letter-spacing:-.02em;line-height:1.35}
+.node-s{font-size:11.5px;color:var(--ink-4);margin-top:4px;line-height:1.5}
+.node-foot{
+  margin-top:11px;padding-top:9px;border-top:1px solid var(--rule-2);
+  display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink-4);
+}
+.node-foot .pill{
+  padding:2px 7px;border-radius:100px;background:var(--accent-w);
+  color:var(--accent);font-weight:620;font-size:10.5px;
+}
+.node-foot .pill.warn{background:var(--warn-w);color:var(--warn)}
+.node-foot .pill.idle{background:var(--rule-2);color:var(--ink-4)}
+
+/* 节点类型变体：形状不同 = 内容性质不同 */
+.node.ghost{
+  background:transparent;border-style:dashed;box-shadow:none;min-width:180px;
+}
+.node.ghost .node-t{font-size:13px;color:var(--ink-3);font-weight:580}
+.node.wide{min-width:262px}
+.node.hub{
+  background:linear-gradient(150deg,var(--accent) 0%,var(--accent-2) 100%);
+  border-color:var(--accent-2);color:#fff;min-width:196px;
+}
+.node.hub .node-num{color:rgba(255,255,255,.72)}
+.node.hub .node-s{color:rgba(255,255,255,.78)}
+.node.hub .node-foot{border-top-color:rgba(255,255,255,.2);color:rgba(255,255,255,.7)}
+.node.hub .node-foot .pill{background:rgba(255,255,255,.2);color:#fff}
+
+/* 分组框：把"一次训练"圈起来 */
+.group{
+  position:absolute;border:1px dashed var(--rule);border-radius:18px;
+  background:rgba(255,255,255,.4);pointer-events:none;
+}
+.group-label{
+  position:absolute;top:-9px;left:16px;background:var(--bg);padding:0 8px;
+  font-size:11px;color:var(--ink-4);font-weight:600;letter-spacing:.02em;
+}
+
+/* 小地图 / 图例 */
+.legend{
+  position:absolute;left:var(--s5);bottom:var(--s5);z-index:20;
+  background:rgba(255,255,255,.92);backdrop-filter:blur(10px);
+  border:1px solid var(--rule);border-radius:11px;padding:11px 13px;
+  display:flex;flex-direction:column;gap:7px;font-size:11.5px;color:var(--ink-3);
+  box-shadow:0 6px 22px -10px rgba(12,17,22,.2);
+}
+.legend-row{display:flex;align-items:center;gap:8px}
+.lg-dot{width:9px;height:9px;border-radius:3px;flex:none}
+.lg-dot.done{background:var(--accent)}
+.lg-dot.now{background:var(--accent-l);border:1.5px solid var(--accent)}
+.lg-dot.next{background:var(--rule)}
+.lg-dot.idle{background:transparent;border:1.3px dashed var(--ink-4)}
+
+/* 提示条：画布操作说明 */
+.hint{
+  position:absolute;right:var(--s5);bottom:var(--s5);z-index:20;
+  font-size:11.5px;color:var(--ink-4);background:rgba(255,255,255,.9);
+  backdrop-filter:blur(8px);border:1px solid var(--rule);border-radius:9px;
+  padding:7px 12px;display:flex;align-items:center;gap:10px;
+}
+.hint kbd{
+  font-family:var(--mono);font-size:10px;padding:1px 5px;border-radius:4px;
+  background:var(--rule-2);color:var(--ink-3);border:1px solid var(--rule);
+}
+
+/* 侧滑详情面板：点击节点后从右侧滑出 */
+.panel{
+  position:absolute;top:0;right:0;bottom:0;width:352px;z-index:35;
+  background:var(--card);border-left:1px solid var(--rule);
+  box-shadow:-16px 0 46px -18px rgba(12,17,22,.24);
+  transform:translateX(100%);transition:transform .34s var(--ease);
+  display:flex;flex-direction:column;
+  pointer-events:none;
+}
+.panel.open{transform:none;pointer-events:auto}
+.panel-head{
+  padding:var(--s4) var(--s5);border-bottom:1px solid var(--rule);
+  display:flex;align-items:flex-start;gap:var(--s3);
+}
+.panel-t{font-size:15px;font-weight:660;letter-spacing:-.02em;line-height:1.35;flex:1}
+.panel-x{
+  width:27px;height:27px;border-radius:7px;border:1px solid var(--rule);background:var(--card);
+  cursor:pointer;color:var(--ink-4);display:grid;place-items:center;flex:none;
+  transition:all .18s var(--ease);
+}
+.panel-x:hover{color:var(--ink);border-color:#CBD2D9}
+.panel-x svg{width:14px;height:14px}
+.panel-body{flex:1;overflow-y:auto;padding:var(--s5)}
+.p-section{margin-bottom:var(--s5)}
+.p-label{
+  font-family:var(--mono);font-size:10px;color:var(--ink-4);
+  letter-spacing:.06em;margin-bottom:7px;
+}
+.p-text{font-size:13px;color:var(--ink-2);line-height:1.7}
+.p-list{display:flex;flex-direction:column;gap:8px}
+.p-li{
+  padding:11px 13px;border-radius:10px;background:var(--rule-2);
+  font-size:12.5px;color:var(--ink-2);line-height:1.6;
+  border-left:2.5px solid var(--accent-l);
+}
+.p-li b{display:block;font-size:12px;color:var(--ink);margin-bottom:3px;font-weight:620}
+.panel-foot{padding:var(--s4) var(--s5);border-top:1px solid var(--rule)}
+.p-btn{
+  width:100%;height:38px;border-radius:9px;border:0;background:var(--accent);
+  color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  transition:all .2s var(--spring);
+}
+.p-btn:hover{background:var(--accent-2);transform:translateY(-1px);box-shadow:0 8px 22px -8px rgba(15,118,110,.6)}
+.p-btn svg{width:15px;height:15px}
+
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);
+  padding:9px 17px;border-radius:10px;background:var(--ink);color:#fff;font-size:12.5px;
+  opacity:0;pointer-events:none;transition:all .28s var(--spring);z-index:99;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.node{opacity:1}}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- 极窄侧栏：52px，悬停展开 -->
+  <aside class="rail">
+    <div class="r-logo">
+      <span class="r-mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16 10 8l4 5 6-8"/></svg></span>
+      <span class="r-logo-text">能力训练平台</span>
+    </div>
+    <button class="r-item on" data-view="overview">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.7"/><rect x="14" y="3" width="7" height="7" rx="1.7"/><rect x="3" y="14" width="7" height="7" rx="1.7"/><rect x="14" y="14" width="7" height="7" rx="1.7"/></svg>
+      <span class="r-text">概览</span>
+    </button>
+    <button class="r-item" data-view="captures">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+      <span class="r-text">记录总结</span>
+    </button>
+    <button class="r-item" data-view="methodology">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg>
+      <span class="r-text">方法论</span>
+      <span class="r-badge">21</span>
+    </button>
+    <button class="r-item" data-view="trainer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+      <span class="r-text">AI 训练师</span>
+      <span class="r-badge">2</span>
+    </button>
+    <div class="r-sp"></div>
+    <button class="r-item" data-view="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 13.6H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+      <span class="r-text">辅助系统</span>
+    </button>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">
+        <span>AI 训练师</span>
+        <span class="sep">/</span>
+        <b>拆解 Notion</b>
+      </div>
+      <div class="top-r">
+        <button class="tb-btn on" id="btnWires">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M7.5 6H14a3 3 0 0 1 3 3v6"/></svg>
+          连线
+        </button>
+        <button class="tb-btn" onclick="resetView()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          复位
+        </button>
+        <div class="zoom">
+          <button onclick="zoomBy(-0.1)">−</button>
+          <span id="zoomVal">100%</span>
+          <button onclick="zoomBy(0.1)">+</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="stage" id="stage">
+      <div class="canvas" id="canvas">
+
+        <!-- 分组：本次训练 -->
+        <div class="group" style="left:56px;top:56px;width:540px;height:246px">
+          <span class="group-label">本次训练 · 拆解 Notion</span>
+        </div>
+
+        <!-- 连线 -->
+        <svg class="wires" id="wires" viewBox="0 0 2200 1400">
+          <path class="wire active" d="M190 168 C 250 168, 250 168, 300 168"/>
+          <path class="wire wire-anim flow" d="M470 168 C 530 168, 530 168, 580 168"/>
+          <path class="wire" d="M330 210 C 330 270, 330 290, 330 330"/>
+          <path class="wire wire-anim" d="M330 400 C 330 448, 460 448, 460 500"/>
+          <path class="wire" d="M700 168 C 760 168, 790 200, 820 240"/>
+          <path class="wire" d="M620 520 C 700 520, 700 470, 760 440"/>
+        </svg>
+
+        <!-- 节点：8 步流程里的前 4 步 -->
+        <div class="node active" style="left:80px;top:130px;animation-delay:.05s" data-node="step1">
+          <div class="node-num">STEP 01</div>
+          <div class="node-t">确认拆解目标</div>
+          <div class="node-s">一句话描述 / 拆解目标 / 目标用户</div>
+          <div class="node-foot"><span class="pill">进行中</span><span>已答 2 轮</span></div>
+        </div>
+
+        <div class="node" style="left:360px;top:130px;animation-delay:.12s" data-node="step2">
+          <div class="node-num">STEP 02</div>
+          <div class="node-t">场景与用户画像</div>
+          <div class="node-s">时间 / 地点 / 状态 / 当前替代方案</div>
+          <div class="node-foot"><span class="pill idle">未开始</span></div>
+        </div>
+
+        <div class="node" style="left:640px;top:130px;animation-delay:.19s" data-node="step3">
+          <div class="node-num">STEP 03</div>
+          <div class="node-t">诊断匮乏感</div>
+          <div class="node-s">匮乏感评分表 + 产品方向匹配</div>
+          <div class="node-foot"><span class="pill idle">未开始</span><span>C 端适用</span></div>
+        </div>
+
+        <div class="node" style="left:200px;top:330px;animation-delay:.26s" data-node="step4">
+          <div class="node-num">STEP 04</div>
+          <div class="node-t">五层架构拆解</div>
+          <div class="node-s">用户 / 应用 / 模型 / 数据 / 算力</div>
+          <div class="node-foot"><span class="pill idle">未开始</span></div>
+        </div>
+
+        <!-- 节点：另一场训练（虚线幽灵节点，表示"平行"） -->
+        <div class="node ghost wide" style="left:80px;top:400px;animation-delay:.33s" data-node="other">
+          <div class="node-num">另一场训练</div>
+          <div class="node-t">给小米手机添加一个 AI 功能</div>
+          <div class="node-foot"><span class="pill warn">需求调研</span><span>3 轮</span></div>
+        </div>
+
+        <!-- 节点：知识点枢纽 -->
+        <div class="node hub" style="left:660px;top:380px;animation-delay:.40s" data-node="hub">
+          <div class="node-num">知识库</div>
+          <div class="node-t">21 个知识点</div>
+          <div class="node-s">8 个领域</div>
+          <div class="node-foot"><span class="pill">点开查看</span></div>
+        </div>
+
+        <!-- 节点：下一步建议 -->
+        <div class="node ghost" style="left:640px;top:540px;animation-delay:.47s" data-node="next">
+          <div class="node-num">建议</div>
+          <div class="node-t">补齐第 2 步的证据</div>
+        </div>
+
+      </div>
+
+      <!-- 图例 -->
+      <div class="legend">
+        <div class="legend-row"><span class="lg-dot done"></span>已完成 / 进行中</div>
+        <div class="legend-row"><span class="lg-dot now"></span>当前节点</div>
+        <div class="legend-row"><span class="lg-dot next"></span>待解锁</div>
+        <div class="legend-row"><span class="lg-dot idle"></span>平行训练</div>
+      </div>
+
+      <div class="hint">
+        <span>拖拽平移</span>
+        <span><kbd>滚轮</kbd>缩放</span>
+        <span><kbd>点击</kbd>节点看详情</span>
+      </div>
+
+      <!-- 侧滑详情 -->
+      <aside class="panel" id="panel">
+        <div class="panel-head">
+          <div class="panel-t" id="panelTitle">确认拆解目标</div>
+          <button class="panel-x" onclick="closePanel()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="panel-body" id="panelBody"></div>
+        <div class="panel-foot">
+          <button class="p-btn" onclick="toast('已进入这一步的对话')">
+            进入这一步
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================ 画布平移缩放 */
+const stage = document.getElementById("stage");
+const canvas = document.getElementById("canvas");
+let ox = 0, oy = 0, scale = 1;
+let dragging = false, sx = 0, sy = 0;
+
+function apply(){ canvas.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`; }
+
+stage.addEventListener("mousedown", e=>{
+  if(e.target.closest(".node") || e.target.closest(".panel")) return;
+  dragging = true; sx = e.clientX - ox; sy = e.clientY - oy;
+  stage.classList.add("grabbing"); canvas.style.transition = "none";
+});
+addEventListener("mousemove", e=>{
+  if(!dragging) return;
+  ox = e.clientX - sx; oy = e.clientY - sy; apply();
+});
+addEventListener("mouseup", ()=>{
+  if(!dragging) return;
+  dragging = false; stage.classList.remove("grabbing");
+  canvas.style.transition = "transform .34s var(--ease)";
+});
+
+stage.addEventListener("wheel", e=>{
+  if(e.target.closest(".panel")) return;
+  e.preventDefault();
+  const next = Math.min(1.6, Math.max(0.5, scale - e.deltaY * 0.0011));
+  // 以鼠标位置为锚点缩放
+  const r = stage.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  ox = mx - (mx - ox) * (next / scale);
+  oy = my - (my - oy) * (next / scale);
+  scale = next; apply(); updateZoom();
+}, {passive:false});
+
+function zoomBy(d){
+  scale = Math.min(1.6, Math.max(0.5, scale + d));
+  const r = stage.getBoundingClientRect();
+  const mx = r.width/2, my = r.height/2;
+  ox = mx - (mx - ox) * (scale / 1); // 简化：围绕中心
+  apply(); updateZoom();
+}
+function updateZoom(){ document.getElementById("zoomVal").textContent = Math.round(scale*100) + "%"; }
+function resetView(){ ox=0; oy=0; scale=1; apply(); updateZoom(); toast("视图已复位"); }
+
+/* ============================================================ 连线开关 */
+const wires = document.getElementById("wires");
+document.getElementById("btnWires").addEventListener("click", function(){
+  const hidden = wires.style.opacity === "0";
+  wires.style.opacity = hidden ? "1" : "0";
+  wires.style.transition = "opacity .3s";
+  this.classList.toggle("on", hidden);
+});
+
+/* ============================================================ 节点详情 */
+const DETAIL = {
+  step1:{
+    t:"确认拆解目标",
+    body:`
+      <div class="p-section"><div class="p-label">这一步要交付</div>
+      <div class="p-text">《产品拆解目标确认卡》：一句话描述、拆解目标、目标用户</div></div>
+      <div class="p-section"><div class="p-label">去哪里获取</div>
+      <div class="p-list">
+        <div class="p-li"><b>产品官网</b>看它自己怎么定义自己、卖给谁</div>
+        <div class="p-li"><b>定价页</b>按 per member 计价还是按量计价，能反推出主力用户</div>
+        <div class="p-li"><b>你自己的使用动机</b>当初为什么装它，现在还用吗</div>
+      </div></div>
+      <div class="p-section"><div class="p-label">训练师的要求</div>
+      <div class="p-text">一句话描述不超过 30 字，不要抄官网 slogan；拆解目标必须是可验证的问题，而不是"老大哥"这类印象。</div></div>`
+  },
+  step2:{
+    t:"场景与用户画像",
+    body:`
+      <div class="p-section"><div class="p-label">这一步要交付</div>
+      <div class="p-text">场景描述卡（时间 / 地点 / 状态 / 当前替代方案）</div></div>
+      <div class="p-section"><div class="p-label">已完成的前提</div>
+      <div class="p-list"><div class="p-li"><b>第 1 步</b>拆解目标：理解它靠什么机制让用户留存</div></div></div>
+      <div class="p-section"><div class="p-label">状态</div>
+      <div class="p-text" style="color:var(--ink-4)">尚未开始。完成第 1 步的作答后解锁。</div></div>`
+  },
+  step3:{
+    t:"诊断匮乏感",
+    body:`
+      <div class="p-section"><div class="p-label">适用范围</div>
+      <div class="p-text">仅 C 端产品。B 端或 AI 功能场景会跳过这一步。</div></div>
+      <div class="p-section"><div class="p-label">这一步要交付</div>
+      <div class="p-text">匮乏感评分表 + 匹配的产品方向</div></div>
+      <div class="p-section"><div class="p-label">去哪里获取</div>
+      <div class="p-list">
+        <div class="p-li"><b>竞品评论区</b>差评里藏着最真实的匮乏点</div>
+        <div class="p-li"><b>知乎 / 小红书</b>看用户自己怎么描述这个痛点</div>
+      </div></div>`
+  },
+  step4:{
+    t:"五层架构拆解",
+    body:`
+      <div class="p-section"><div class="p-label">这一步要交付</div>
+      <div class="p-text">五层架构分析表：用户层 / 应用层 / 模型层 / 数据层 / 算法算力层</div></div>
+      <div class="p-section"><div class="p-label">为什么要分五层</div>
+      <div class="p-text">因为只看到"功能"就永远拆不出机制。分层之后你才能判断：它的护城河到底在数据层还是应用层。</div></div>`
+  },
+  other:{
+    t:"给小米手机添加一个 AI 功能",
+    body:`
+      <div class="p-section"><div class="p-label">训练信息</div>
+      <div class="p-list">
+        <div class="p-li"><b>场景</b>需求调研</div>
+        <div class="p-li"><b>模式</b>AI 助教引导</div>
+        <div class="p-li"><b>进度</b>3 轮对话，进行中</div>
+      </div></div>
+      <div class="p-section"><div class="p-label">备注</div>
+      <div class="p-text">这场训练是自由的，没有固定步骤。随时可以继续，或者让它先搁着。</div></div>`
+  },
+  hub:{
+    t:"21 个知识点",
+    body:`
+      <div class="p-section"><div class="p-label">领域分布</div>
+      <div class="p-list">
+        <div class="p-li"><b>心理学 5</b>损失厌恶、认知负荷、峰终定律、锚定效应、确认偏误</div>
+        <div class="p-li"><b>经济学 3</b>机会成本、边际效用递减、激励相容</div>
+        <div class="p-li"><b>商业与战略 3</b>商业模式画布、护城河与转换成本、价值链定位</div>
+        <div class="p-li"><b>产品设计 3 / 用户研究 3 / 其他 4</b></div>
+      </div></div>
+      <div class="p-section"><div class="p-label">提示</div>
+      <div class="p-text">这些知识点会在训练中被训练师引用。你也可以主动把它们拉进对话。</div></div>`
+  },
+  next:{
+    t:"建议：补齐第 2 步的证据",
+    body:`
+      <div class="p-section"><div class="p-label">为什么给这个建议</div>
+      <div class="p-text">你在第 1 步把 Notion 定义为"笔记工具"，但它官网自称 all-in-one workspace。这个偏差会影响后面五层架构的判断，先补证据再往下走。</div></div>
+      <div class="p-section"><div class="p-label">具体动作</div>
+      <div class="p-list">
+        <div class="p-li"><b>截 Pricing 页</b>看三个套餐分别卖给谁</div>
+        <div class="p-li"><b>回忆第一次使用的场景</b>写下当时的状态和替代方案</div>
+      </div></div>`
+  }
+};
+
+document.querySelectorAll(".node").forEach(n=>{
+  n.addEventListener("click", e=>{
+    e.stopPropagation();
+    const d = DETAIL[n.dataset.node];
+    if(!d) return;
+    document.querySelectorAll(".node").forEach(x=>x.classList.remove("active"));
+    n.classList.add("active");
+    document.getElementById("panelTitle").textContent = d.t;
+    document.getElementById("panelBody").innerHTML = d.body;
+    document.getElementById("panel").classList.add("open");
+  });
+});
+function closePanel(){
+  document.getElementById("panel").classList.remove("open");
+  document.querySelectorAll(".node").forEach(x=>x.classList.remove("active"));
+}
+
+/* ============================================================ 侧栏切换 */
+document.querySelectorAll(".r-item").forEach(it=>{
+  it.addEventListener("click", ()=>{
+    if(!it.dataset.view) return;
+    document.querySelectorAll(".r-item").forEach(x=>x.classList.remove("on"));
+    it.classList.add("on");
+    toast("切换到「" + it.querySelector(".r-text").textContent + "」");
+  });
+});
+
+/* ============================================================ Toast */
+let tt;
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(tt);
+  tt = setTimeout(()=>t.classList.remove("show"), 1700);
+}
+
+/* 键盘：Esc 关面板，0 复位 */
+addEventListener("keydown", e=>{
+  if(e.key === "Escape") closePanel();
+  if(e.key === "0") resetView();
+});
+</script>
+</body>
+</html>

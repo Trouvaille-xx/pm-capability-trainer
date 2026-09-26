@@ -1,5 +1,5 @@
-import { handle, ok } from "@/lib/api";
-import { findById, patch, remove } from "@/lib/store";
+import { assertSameOrigin, handle, ok, readBody, uniqueStringArray } from "@/lib/api";
+import { findById, mutate, remove } from "@/lib/store";
 import type { TrainingSession } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,27 +17,36 @@ export async function GET(_request: Request, { params }: Params) {
 
 export async function PATCH(request: Request, { params }: Params) {
   return handle(async () => {
+    assertSameOrigin(request);
     const { id } = await params;
-    const body = (await request.json().catch(() => ({}))) as Partial<TrainingSession>;
+    const body = await readBody<TrainingSession & { tags?: string[] }>(request);
 
-    const changes: Partial<TrainingSession> = {
+    // 标签写进报告里（没有报告就忽略），其余字段只接受白名单值
+    const tags =
+      body.tags !== undefined ? uniqueStringArray(body.tags, 12) : undefined;
+
+    const updated = await mutate("sessions", id, (current) => ({
+      ...current,
+      ...(typeof body.topic === "string" && body.topic.trim() !== ""
+        ? { topic: body.topic.trim().slice(0, 500) }
+        : {}),
+      ...(body.status === "active" || body.status === "completed"
+        ? { status: body.status }
+        : {}),
+      ...(tags !== undefined && current.report
+        ? { report: { ...current.report, tags } }
+        : {}),
       updatedAt: new Date().toISOString(),
-    };
-    if (typeof body.topic === "string" && body.topic.trim() !== "") {
-      changes.topic = body.topic.trim().slice(0, 500);
-    }
-    if (body.status === "active" || body.status === "completed") {
-      changes.status = body.status;
-    }
+    }));
 
-    const updated = await patch("sessions", id, changes);
     if (!updated) return ok({ error: "训练会话不存在" }, 404);
     return ok(updated);
   });
 }
 
-export async function DELETE(_request: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: Params) {
   return handle(async () => {
+    assertSameOrigin(request);
     const { id } = await params;
     const deleted = await remove("sessions", id);
     if (!deleted) return ok({ error: "训练会话不存在" }, 404);

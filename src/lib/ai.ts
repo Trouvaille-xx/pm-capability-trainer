@@ -88,9 +88,8 @@ function describeError(status: number, body: string): string {
   return `模型接口返回 HTTP ${status}：${snippet}`;
 }
 
-async function resolveSettings(override?: Partial<AISettings>): Promise<AISettings> {
-  const stored = await readSettings();
-  const settings = { ...stored, ...override };
+async function resolveSettings(): Promise<AISettings> {
+  const settings = await readSettings();
   if (!settings.baseURL) throw new AIRequestError("尚未配置 Base URL", 0);
   if (!settings.model) throw new AIRequestError("尚未配置模型名", 0);
   return settings;
@@ -107,45 +106,126 @@ function missingKeyHint(settings: AISettings): string {
 }
 
 /* ------------------------------------------------------------------ *
- * 一次性问答（用于生成训练报告）
+ * 请求基础设施：超时、取消、统一解包
+ *
+ * 之前每个请求各写一遍 fetch → text → JSON.parse，且都不传 signal：
+ * 上游卡住就会永久占住一个路由。这里统一收口。
  * ------------------------------------------------------------------ */
 
-export async function chatOnce(
-  messages: ChatMessage[],
-  options: { temperature?: number; maxTokens?: number; sessionId?: string } = {},
-): Promise<string> {
-  const settings = await resolveSettings();
-  if (!settings.apiKey) throw new AIRequestError(missingKeyHint(settings), 0);
+/** 非流式请求超时（工具轮、报告生成、连通性自检）。 */
+const REQUEST_TIMEOUT_MS = 90_000;
 
-  const response = await fetch(endpoint(settings), {
-    method: "POST",
-    headers: requestHeaders(settings, options.sessionId),
-    body: JSON.stringify({
-      model: settings.model,
-      messages,
-      stream: false,
-      temperature: options.temperature ?? settings.temperature,
-      max_tokens: options.maxTokens ?? settings.maxTokens,
-    }),
-  });
+/** 流式请求超时：一次长回答可能持续很久，给足时间。 */
+const STREAM_TIMEOUT_MS = 300_000;
+
+/**
+ * 合并「自身超时」与「调用方的取消信号」。
+ *
+ * 有调用方信号时必须用 AbortSignal.any 合并，而不是二选一：
+ * 直接用调用方的信号会丢掉超时保护，直接用自身的会丢掉「客户端断开即中止」。
+ */
+function mergeSignal(
+  external: AbortSignal | undefined,
+  ms: number,
+): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  return external ? AbortSignal.any([timeout, external]) : timeout;
+}
+
+/** 把 abort 类异常翻译成人能看懂的话；不是 abort 就返回 null。 */
+function asAbortError(error: unknown): AIRequestError | null {
+  if (!(error instanceof Error)) return null;
+  if (error.name === "TimeoutError") {
+    return new AIRequestError(
+      "请求模型超时（上游长时间没有响应），请检查网络或更换端点后重试。",
+      0,
+    );
+  }
+  if (error.name === "AbortError") {
+    return new AIRequestError("请求已取消。", 0);
+  }
+  return null;
+}
+
+interface ChatRequestOptions {
+  sessionId?: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/**
+ * 发一次非流式 chat/completions 并解包 JSON。
+ *
+ * 抽出来是为了让 chatOnce / chatWithTools / testConnection 共用同一套
+ * 超时、取消、错误翻译逻辑，而不是各写一遍。
+ */
+async function postChat<T>(
+  settings: AISettings,
+  body: Record<string, unknown>,
+  options: ChatRequestOptions = {},
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(endpoint(settings), {
+      method: "POST",
+      headers: requestHeaders(settings, options.sessionId),
+      body: JSON.stringify(body),
+      signal: mergeSignal(options.signal, options.timeoutMs ?? REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const abortError = asAbortError(error);
+    if (abortError) throw abortError;
+    throw error;
+  }
 
   const text = await response.text();
   if (!response.ok) {
     throw new AIRequestError(describeError(response.status, text), response.status);
   }
 
-  let parsed: {
-    choices?: { message?: { content?: string } }[];
-  };
   try {
-    parsed = JSON.parse(text);
+    return JSON.parse(text) as T;
   } catch {
-    throw new AIRequestError(`模型返回的不是合法 JSON：${text.slice(0, 300)}`, response.status);
+    throw new AIRequestError(
+      `模型返回的不是合法 JSON：${text.slice(0, 300)}`,
+      response.status,
+    );
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * 一次性问答（用于生成训练报告）
+ * ------------------------------------------------------------------ */
+
+export async function chatOnce(
+  messages: ChatMessage[],
+  options: {
+    temperature?: number;
+    maxTokens?: number;
+    sessionId?: string;
+    signal?: AbortSignal;
+  } = {},
+): Promise<string> {
+  const settings = await resolveSettings();
+  if (!settings.apiKey) throw new AIRequestError(missingKeyHint(settings), 0);
+
+  const parsed = await postChat<{
+    choices?: { message?: { content?: string } }[];
+  }>(
+    settings,
+    {
+      model: settings.model,
+      messages,
+      stream: false,
+      temperature: options.temperature ?? settings.temperature,
+      max_tokens: options.maxTokens ?? settings.maxTokens,
+    },
+    { sessionId: options.sessionId, signal: options.signal },
+  );
 
   const content = parsed.choices?.[0]?.message?.content;
   if (typeof content !== "string" || content.trim() === "") {
-    throw new AIRequestError("模型返回了空内容，请重试或更换模型。", response.status);
+    throw new AIRequestError("模型返回了空内容，请重试或更换模型。", 0);
   }
   return content;
 }
@@ -170,15 +250,19 @@ export async function chatWithTools(
     maxTokens?: number;
     sessionId?: string;
     toolChoice?: "auto" | "none";
+    signal?: AbortSignal;
   } = {},
 ): Promise<ToolCallReply> {
   const settings = await resolveSettings();
   if (!settings.apiKey) throw new AIRequestError(missingKeyHint(settings), 0);
 
-  const response = await fetch(endpoint(settings), {
-    method: "POST",
-    headers: requestHeaders(settings, options.sessionId),
-    body: JSON.stringify({
+  const parsed = await postChat<{
+    choices?: {
+      message?: { content?: string | null; tool_calls?: ToolCall[] };
+    }[];
+  }>(
+    settings,
+    {
       model: settings.model,
       messages,
       stream: false,
@@ -187,27 +271,9 @@ export async function chatWithTools(
       ...(tools.length > 0
         ? { tools, tool_choice: options.toolChoice ?? "auto" }
         : {}),
-    }),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new AIRequestError(describeError(response.status, text), response.status);
-  }
-
-  let parsed: {
-    choices?: {
-      message?: { content?: string | null; tool_calls?: ToolCall[] };
-    }[];
-  };
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new AIRequestError(
-      `模型返回的不是合法 JSON：${text.slice(0, 300)}`,
-      response.status,
-    );
-  }
+    },
+    { sessionId: options.sessionId, signal: options.signal },
+  );
 
   const message = parsed.choices?.[0]?.message;
   return {
@@ -222,22 +288,35 @@ export async function chatWithTools(
 
 export async function* chatStream(
   messages: ChatMessage[],
-  options: { temperature?: number; maxTokens?: number; sessionId?: string } = {},
+  options: {
+    temperature?: number;
+    maxTokens?: number;
+    sessionId?: string;
+    signal?: AbortSignal;
+  } = {},
 ): AsyncGenerator<string, void, unknown> {
   const settings = await resolveSettings();
   if (!settings.apiKey) throw new AIRequestError(missingKeyHint(settings), 0);
 
-  const response = await fetch(endpoint(settings), {
-    method: "POST",
-    headers: requestHeaders(settings, options.sessionId),
-    body: JSON.stringify({
-      model: settings.model,
-      messages,
-      stream: true,
-      temperature: options.temperature ?? settings.temperature,
-      max_tokens: options.maxTokens ?? settings.maxTokens,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint(settings), {
+      method: "POST",
+      headers: requestHeaders(settings, options.sessionId),
+      body: JSON.stringify({
+        model: settings.model,
+        messages,
+        stream: true,
+        temperature: options.temperature ?? settings.temperature,
+        max_tokens: options.maxTokens ?? settings.maxTokens,
+      }),
+      signal: mergeSignal(options.signal, STREAM_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const abortError = asAbortError(error);
+    if (abortError) throw abortError;
+    throw error;
+  }
 
   if (!response.ok || !response.body) {
     const body = await response.text().catch(() => "");
@@ -250,7 +329,15 @@ export async function* chatStream(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        const abortError = asAbortError(error);
+        if (abortError) throw abortError;
+        throw error;
+      }
+      const { done, value } = chunk;
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
@@ -280,6 +367,14 @@ export async function* chatStream(
       }
     }
   } finally {
+    /* releaseLock 只是把锁还回去，不会中止上游；调用方提前跳出
+       （客户端断开 / 处理器提前返回）时必须 cancel，否则模型还在生成、
+       连接一直挂着。 */
+    try {
+      await reader.cancel();
+    } catch {
+      // 流已经结束或已经出错，cancel 抛错无所谓
+    }
     reader.releaseLock();
   }
 }
@@ -387,37 +482,22 @@ export async function testConnection(): Promise<{ ok: true; reply: string }> {
   const settings = await resolveSettings();
   if (!settings.apiKey) throw new AIRequestError(missingKeyHint(settings), 0);
 
-  const response = await fetch(endpoint(settings), {
-    method: "POST",
-    headers: requestHeaders(settings, "connection-test"),
-    body: JSON.stringify({
+  const parsed = await postChat<{ choices?: { message?: { content?: string } }[] }>(
+    settings,
+    {
       model: settings.model,
       messages: [{ role: "user", content: "只回复两个字：可用" }],
       stream: false,
       temperature: 0,
       max_tokens: 512,
-    }),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new AIRequestError(describeError(response.status, text), response.status);
-  }
-
-  let parsed: { choices?: { message?: { content?: string } }[] };
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new AIRequestError(
-      `接口返回成功但不是合法 JSON：${text.slice(0, 200)}`,
-      response.status,
-    );
-  }
+    },
+    { sessionId: "connection-test", timeoutMs: 60_000 },
+  );
 
   if (!parsed.choices || parsed.choices.length === 0) {
     throw new AIRequestError(
-      `接口连通，但返回体缺少 choices 字段，可能不是 OpenAI 兼容端点：${text.slice(0, 200)}`,
-      response.status,
+      "接口连通，但返回体缺少 choices 字段，可能不是 OpenAI 兼容端点。",
+      0,
     );
   }
 

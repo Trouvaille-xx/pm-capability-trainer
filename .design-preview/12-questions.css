@@ -1,0 +1,515 @@
+/* 题库预览：只覆盖 _shared.css，不改它 —— 落地时这些规则会进 globals.css */
+@import url("./_shared.css");
+
+/* ============================================================
+   一、题卡（墙上的形态）
+   便签墙语言不变：白纸、倾斜、图钉、1px 线、无圆角。
+   题卡的差别只在「状态」：这题答了没有、AI 答了没有。
+   ============================================================ */
+
+/* 题目正文用衬线，跟知识点标题一致 */
+.q-title {
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 10px;
+  /* 题目可能很长（面试题经常两三行），最多 4 行 */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 题卡的来源标记：面试真题 / 自己想的 / 别人问的 */
+.q-src {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* 进度条：这题走到哪一步了。
+   五个小格 = 五个块，填了的就是有内容的。
+   这是题库唯一需要的「仪表」，一眼看出哪题还没答。 */
+.q-steps {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 14px;
+}
+
+.q-step {
+  height: 3px;
+  flex: 1;
+  background: var(--rule);
+}
+
+.q-step[data-on="true"] {
+  background: var(--ink-2);
+}
+
+.q-step[data-on="true"].is-mine {
+  background: var(--mark);
+}
+
+.q-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(20, 18, 15, 0.13);
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
+.q-foot .q-count {
+  margin-left: auto;
+}
+
+/* ============================================================
+   二、题目详情：三种排版
+   共同前提 —— 五个块的信息量差很多：
+     题目        1-3 行
+     我的回答    几百字（我写的）
+     AI 回答     几百字（AI 写的）
+     相关知识    3-5 条，每条带出处
+     推荐阅读    3-5 条，都是链接
+   「我的回答 / AI 回答」是主角，其余三块是配角。
+   ============================================================ */
+
+/* 详情页外壳：比阅读版心宽一点，因为要并排 */
+.q-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 0 60px;
+}
+
+/* 题头：题目本身要最高优先级，独立成块，占满宽 */
+.q-head {
+  padding-bottom: 22px;
+  margin-bottom: 26px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.q-head-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.q-head h1 {
+  font-family: var(--serif);
+  font-size: 30px;
+  line-height: 1.42;
+  font-weight: 600;
+  margin: 0;
+  max-width: 46ch;
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------------
+   方案甲：对照式（左右并排）
+   核心主张：这题的价值在「我说的 vs 它说的」差在哪。
+   所以让两边真正并排，眼睛可以横向比对。
+   ------------------------------------------------------------ */
+
+.cmp {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.cmp > * {
+  padding: 26px 30px 30px;
+  min-width: 0;
+}
+
+/* 左边：我的回答。用纸白底 */
+.cmp-mine {
+  border-right: 1px solid var(--rule);
+}
+
+/* 右边：AI 回答。用略灰的底，暗示这是「参考」不是「我的」 */
+.cmp-ai {
+  background: var(--paper-2);
+}
+
+.cmp-colhead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule-2, rgba(20,18,15,.09));
+}
+
+.cmp-colhead h2 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+  letter-spacing: 0;
+}
+
+.cmp-colhead .cmp-note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
+/* 未作答的列：不画空框，给一句可点的提示 */
+.cmp-empty {
+  color: var(--ink-4);
+  font-size: 13.5px;
+  line-height: 1.9;
+  padding: 6px 0 10px;
+}
+
+.cmp-empty button {
+  font: inherit;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  padding: 0 0 1px;
+  cursor: pointer;
+}
+
+/* 正文：两列都要限宽，跟阅读版心一致的节奏 */
+.cmp-body {
+  font-size: 14.5px;
+  line-height: 1.95;
+  color: var(--ink-2);
+}
+
+.cmp-body p {
+  margin: 0 0 14px;
+}
+
+.cmp-body ul,
+.cmp-body ol {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+
+.cmp-body li {
+  margin-bottom: 7px;
+}
+
+.cmp-body strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 光标：AI 正在写 */
+.cmp-cursor::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  background: var(--ink-2);
+  vertical-align: -2px;
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* 两个「配角」块：相关知识 + 推荐阅读，并排放在对照下方 */
+.cmp-aside {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin-top: 0;
+  border: 1px solid var(--rule);
+  border-top: 0;
+  background: var(--paper);
+}
+
+.cmp-aside > * {
+  padding: 24px 30px 28px;
+  min-width: 0;
+}
+
+.cmp-aside > *:first-child {
+  border-right: 1px solid var(--rule);
+}
+
+/* ------------------------------------------------------------
+   方案乙：主次式（AI 回答浮在侧栏，我的回答占主栏）
+   核心主张：这是「我练手的本子」，我的回答是主角。
+   AI 回答是参考，放窄栏；知识和阅读是脚注，放更低一级。
+   ------------------------------------------------------------ */
+
+.lead {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 34px;
+  align-items: start;
+}
+
+/* 主栏：我的回答，白纸大字 */
+.lead-main {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  padding: 28px 32px 32px;
+}
+
+/* 从栏：AI 回答，略灰、字号小一档，明确是「参考」 */
+.lead-side {
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  padding: 24px 26px 28px;
+  position: sticky;
+  top: 20px;
+}
+
+.lead-side .cmp-body {
+  font-size: 13.5px;
+  line-height: 1.88;
+}
+
+/* 脚注区：两块配角，横过来左右排，再降一级 */
+.lead-foot {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 34px;
+  margin-top: 34px;
+  padding-top: 26px;
+  border-top: 1px solid var(--rule);
+}
+
+/* ============================================================
+   三、两个配角块的内部形态（两种方案共用）
+   ============================================================ */
+
+/* 相关知识：一条一个概念，带出处。
+   不用卡片网格 —— 用细线分隔的条目列表，跟报告页的评分表同族。 */
+.rel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.rel-item {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule-2, rgba(20,18,15,.09));
+}
+
+.rel-item:first-child {
+  padding-top: 4px;
+}
+
+.rel-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.rel-term {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 5px;
+}
+
+.rel-gloss {
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+/* 这条概念指回方法论库时，给一个可点的标记 */
+.rel-link {
+  display: inline-block;
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 1px;
+  cursor: pointer;
+}
+
+.rel-link:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+/* 推荐阅读：都是链接，所以形态是「书目」——
+   序号 + 标题 + 来源，序号用克制的形式，不做圆形徽章。 */
+.read-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  counter-reset: rd;
+}
+
+.read-item {
+  display: flex;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--rule-2, rgba(20,18,15,.09));
+  align-items: baseline;
+}
+
+.read-item:first-child {
+  padding-top: 4px;
+}
+
+.read-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.read-item::before {
+  counter-increment: rd;
+  content: counter(rd);
+  flex: 0 0 auto;
+  width: 16px;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--ink-4);
+  text-align: right;
+}
+
+.read-body {
+  min-width: 0;
+}
+
+.read-title {
+  display: block;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  border-bottom: 1px solid transparent;
+  margin-bottom: 3px;
+}
+
+.read-title:hover {
+  border-bottom-color: var(--ink);
+}
+
+.read-meta {
+  font-size: 11.5px;
+  color: var(--ink-4);
+  line-height: 1.6;
+}
+
+.read-why {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.7;
+  margin-top: 3px;
+}
+
+/* ============================================================
+   四、块的统一小标题
+   五个块用同一套标题语言，避免每块自己长一套。
+   形式：一条短线 + 名称，不用彩色小标签。
+   ============================================================ */
+.blk-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.blk-label::before {
+  content: "";
+  width: 14px;
+  height: 1px;
+  background: var(--ink-4);
+  flex: 0 0 auto;
+  transform: translateY(-3px);
+}
+
+.blk-label .blk-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-4);
+}
+
+/* ============================================================
+   五、方案切换器（只是预览用的工具，不落地）
+   ============================================================ */
+.switchbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0 14px;
+  margin-bottom: 26px;
+  background: var(--board);
+  border-bottom: 1px solid var(--rule);
+}
+
+.switchbar .sw-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.switchbar .sw-desc {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.switchbar .sw-btns {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+
+.switchbar button {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.switchbar button[data-on="true"] {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--mark);
+}
+
+.variant {
+  display: none;
+}
+
+.variant[data-on="true"] {
+  display: block;
+}
+
+@media (max-width: 1080px) {
+  .cmp,
+  .cmp-aside,
+  .lead,
+  .lead-foot {
+    grid-template-columns: 1fr;
+  }
+  .cmp-mine,
+  .cmp-aside > *:first-child {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+}

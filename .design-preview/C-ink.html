@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方向 C · 纸与墨 — 产品经理能力训练平台</title>
+<style>
+/* ==========================================================================
+   方向 C：纸与墨（Linear 的纪律 + Notion 的文档感，融合）
+
+   设计读法：单人技能训练工作台，气质"有编辑感、有展示欲、克制但有温度"。
+   三档旋钮：VARIANCE 5 / MOTION 5 / DENSITY 4
+
+   核心决策（对治"卡片太多像后台管理"+"没有品质感"）：
+   1. 卡片只保留给"真的需要独立成块"的东西（知识点、训练记录），
+      其余全部改为「文档流 + 发丝线 + 留白」。
+   2. 强调色从"最普通的互联网蓝 #2f5cf6"换成赭石橙 #C2410C。
+      理由是内容属性：这是"读书、思考、拆解"的工作台，暖色比冷蓝更贴，
+      而且能立刻摆脱"又一个 SaaS"的观感。
+   3. 只在一个地方花掉大胆 —— 页头做成报刊头版式的排版：
+      大标题 + 右侧竖排状态。其余全部安静。
+   4. 字号阶梯拉开，用字重和字号而不是边框来表达层级。
+   ========================================================================== */
+
+:root {
+  /* ---- 色板（5 个命名值） ---- */
+  --paper:    #FBFAF7;  /* 纸张底：极浅暖白，比纯白有温度 */
+  --card:     #FFFFFF;  /* 抬起的层 */
+  --ink:      #1A1A1A;  /* 墨 */
+  --ink-2:    #4A4A48;
+  --ink-3:    #6E6E6E;  /* 次要 */
+  --ink-4:    #9A9A96;  /* 极次要 */
+  --rule:     #E7E4DC;  /* 纸张折痕线：暖灰，不是冷灰 */
+  --rule-2:   #F0EDE6;
+  --accent:   #C2410C;  /* 赭石橙：唯一强调色 */
+  --accent-2: #9A3412;
+  --accent-w: #FDF1EA;  /* 强调色的极淡底 */
+  --good:     #3F6B4A;
+
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 44px; --s8: 64px;
+
+  --r-sm: 5px;
+  --r-md: 9px;
+
+  /* 字体：标题用几何无衬线（当代、克制），正文系统字，
+     数字用等宽 —— 三者的分工是清晰的 */
+  --display: "Instrument Sans", "Satoshi", -apple-system, BlinkMacSystemFont,
+             "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font); font-size: 14px; line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+
+/* 侧栏：无底色差、无描边 —— 只靠一条折痕线与主区区分 */
+.rail {
+  padding: var(--s5) var(--s3);
+  border-right: 1px solid var(--rule);
+  display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh;
+}
+.brand { display: flex; align-items: center; gap: 9px; padding: 0 var(--s2) var(--s5); }
+.brand-mark {
+  width: 21px; height: 21px; border-radius: 5px; flex: none;
+  background: var(--accent); display: grid; place-items: center;
+}
+.brand-mark svg { width: 11px; height: 11px; stroke: #fff; }
+.brand-name { font-size: 12.5px; font-weight: 640; letter-spacing: -0.01em; }
+
+.nav-label { font-size: 10.5px; color: var(--ink-4); padding: 0 var(--s2) var(--s2); letter-spacing: .04em; }
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav a {
+  display: flex; align-items: center; gap: 9px; padding: 6px var(--s2);
+  border-radius: var(--r-sm); color: var(--ink-3); text-decoration: none;
+  font-size: 13px; transition: background .13s var(--ease), color .13s var(--ease);
+}
+.nav a svg { width: 14px; height: 14px; flex: none; }
+.nav a:hover { background: rgba(26,26,26,.045); color: var(--ink-2); }
+.nav a.on { color: var(--ink); font-weight: 600; background: rgba(26,26,26,.055); }
+/* 选中态用强调色的小圆点，不用整块变色 —— 克制，但一眼能找到 */
+.nav a.on .dot { opacity: 1; }
+.nav .dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+  margin-left: auto; opacity: 0; transition: opacity .13s var(--ease);
+}
+.rail-foot {
+  margin-top: auto; padding: var(--s3) var(--s2) 0;
+  font-size: 11px; color: var(--ink-4);
+}
+
+.main { padding: var(--s7) var(--s7) 100px; max-width: 1060px; }
+
+/* ---------------------------------------------------------------- 页头
+   唯一"花掉大胆"的地方：报刊头版式排版。
+   大标题 + 右侧竖排的元信息，用一条粗折痕线收口。 */
+.masthead {
+  display: grid; grid-template-columns: 1fr auto;
+  align-items: end; gap: var(--s5);
+  padding-bottom: var(--s4); margin-bottom: var(--s6);
+  border-bottom: 1.5px solid var(--ink);
+}
+.masthead h1 {
+  font-family: var(--display);
+  font-size: 40px; font-weight: 620; line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+.masthead .sub { color: var(--ink-3); font-size: 13.5px; margin-top: 7px; }
+.mast-side {
+  text-align: right; font-family: var(--mono); font-size: 10.5px;
+  color: var(--ink-4); line-height: 1.9; white-space: nowrap;
+}
+.mast-side b { color: var(--accent); font-weight: 600; }
+
+/* ---------------------------------------------------------------- 主操作
+   不用渐变横幅（那是最典型的 AI 味），改为「左侧粗强调线 + 米白底」 */
+.lead {
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  gap: var(--s5); padding: var(--s4) var(--s5);
+  background: var(--card); border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  margin-bottom: var(--s6);
+}
+.lead h2 {
+  font-family: var(--display); font-size: 16px; font-weight: 620;
+  letter-spacing: -0.018em; margin-bottom: 2px;
+}
+.lead p { color: var(--ink-3); font-size: 12.5px; }
+.lead-btns { display: flex; gap: var(--s2); flex: none; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: var(--r-sm);
+  font-size: 12.5px; font-weight: 560; cursor: pointer; font-family: inherit;
+  border: 1px solid var(--rule); background: var(--card); color: var(--ink-2);
+  transition: all .13s var(--ease);
+}
+.btn:hover { border-color: #D8D4C9; color: var(--ink); }
+.btn svg { width: 13px; height: 13px; }
+.btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-accent:hover { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+
+/* ---------------------------------------------------------------- 区块 */
+.sec { margin-bottom: var(--s6); }
+.sec-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: var(--s3);
+}
+/* 区块标题：字重 + 字号承担层级，不用装饰性 eyebrow */
+.sec-title {
+  font-family: var(--display); font-size: 13px; font-weight: 620;
+  letter-spacing: 0.01em; color: var(--ink-2);
+}
+.sec-title::before {
+  content: ""; display: inline-block; width: 12px; height: 1.5px;
+  background: var(--accent); vertical-align: middle;
+  margin-right: 8px; margin-bottom: 3px;
+}
+.sec-link { font-size: 12px; color: var(--ink-4); text-decoration: none; }
+.sec-link:hover { color: var(--accent); }
+
+/* 数据：不用四个卡片，做成一条带统计的横排，靠分隔线切分 */
+.stats {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--rule); border-radius: var(--r-md);
+  background: var(--card); overflow: hidden;
+}
+.stat { padding: var(--s4) var(--s4); border-left: 1px solid var(--rule-2); }
+.stat:first-child { border-left: 0; }
+.stat-num {
+  font-family: var(--mono); font-size: 24px; font-weight: 500;
+  letter-spacing: -0.03em; line-height: 1.15; font-variant-numeric: tabular-nums;
+}
+.stat-num.dim { color: var(--ink-4); }
+.stat-label { font-size: 11.5px; color: var(--ink-4); margin-top: 2px; }
+
+/* 场景：改为「横向三段」—— 每段是一条，不再各自成卡 */
+.paths { display: flex; flex-direction: column; }
+.path {
+  display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: var(--s4);
+  padding: var(--s4) var(--s3); margin: 0 calc(var(--s3) * -1);
+  border-bottom: 1px solid var(--rule-2);
+  border-radius: var(--r-sm); text-decoration: none; color: inherit;
+  transition: background .13s var(--ease);
+}
+.path:last-child { border-bottom: 0; }
+.path:hover { background: rgba(255,255,255,.9); }
+.path:hover .path-go { opacity: 1; }
+.path-n {
+  font-family: var(--mono); font-size: 11px; color: var(--accent);
+  font-weight: 600; width: 18px; flex: none;
+}
+.path-t { font-size: 14px; font-weight: 560; letter-spacing: -0.008em; }
+.path-s { font-size: 12px; color: var(--ink-4); margin-top: 1px; }
+.path-go {
+  opacity: 0; color: var(--accent); transition: opacity .13s var(--ease);
+}
+.path-go svg { width: 15px; height: 15px; display: block; }
+
+/* 进行中：两栏，组件用真实的"条目"，不是卡片 */
+.two { display: grid; grid-template-columns: 1.15fr 1fr; gap: var(--s6); }
+.stream { display: flex; flex-direction: column; }
+.item {
+  display: grid; grid-template-columns: 1fr auto; gap: var(--s4);
+  align-items: baseline; padding: var(--s3) 0;
+  border-bottom: 1px solid var(--rule-2);
+  text-decoration: none; color: inherit;
+}
+.item:last-child { border-bottom: 0; }
+.item:hover .item-t { color: var(--accent); }
+.item-t { font-size: 13.5px; font-weight: 540; letter-spacing: -0.006em; transition: color .13s var(--ease); }
+.item-m {
+  font-family: var(--mono); font-size: 10px; color: var(--ink-4);
+  margin-top: 5px; display: flex; gap: var(--s3); align-items: center;
+}
+.step { color: var(--accent); font-weight: 600; }
+.item-when { font-size: 11.5px; color: var(--ink-4); white-space: nowrap; }
+
+.empty {
+  padding: var(--s5); text-align: center;
+  border: 1px dashed var(--rule); border-radius: var(--r-md);
+  color: var(--ink-4); font-size: 12.5px; line-height: 1.8;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .rail { display: none; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .two { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="rail">
+    <div class="brand">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16 10 8l4 5 6-8"/></svg></span>
+      <span class="brand-name">能力训练平台</span>
+    </div>
+    <div class="nav-label">工作台</div>
+    <nav class="nav">
+      <a class="on" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>概览<span class="dot"></span></a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>记录总结<span class="dot"></span></a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg>方法论<span class="dot"></span></a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>AI 训练师<span class="dot"></span></a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>辅助系统<span class="dot"></span></a>
+    </nav>
+    <div class="rail-foot">今日已练 0 分钟</div>
+  </aside>
+
+  <main class="main">
+
+    <!-- 页头：唯一花掉大胆的地方 -->
+    <header class="masthead">
+      <div>
+        <h1>概览</h1>
+        <p class="sub">两次训练都在进行中。继续其中一次，或开一个新的。</p>
+      </div>
+      <div class="mast-side">
+        2026 · 09 · 25<br>
+        周五<br>
+        连续 <b>2</b> 天
+      </div>
+    </header>
+
+    <section class="lead">
+      <div>
+        <h2>继续「拆解 Notion」</h2>
+        <p>第 1 步 · 确认拆解目标 —— 已经答了 2 轮</p>
+      </div>
+      <div class="lead-btns">
+        <button class="btn btn-accent">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          继续训练
+        </button>
+        <button class="btn">新的训练</button>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head">
+        <span class="sec-title">数据</span>
+        <a class="sec-link" href="#">全部记录</a>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-num dim">0</div><div class="stat-label">记录总结</div></div>
+        <div class="stat"><div class="stat-num">21</div><div class="stat-label">知识点</div></div>
+        <div class="stat"><div class="stat-num">2</div><div class="stat-label">训练场次</div></div>
+        <div class="stat"><div class="stat-num dim">—</div><div class="stat-label">平均得分</div></div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head"><span class="sec-title">开始一次训练</span></div>
+      <div class="paths">
+        <a class="path" href="#">
+          <span class="path-n">01</span>
+          <span>
+            <div class="path-t">产品拆解</div>
+            <div class="path-s">拆一款产品的定位、结构、机制与商业化，竞品分析属于这一场景</div>
+          </span>
+          <span class="path-go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>
+        </a>
+        <a class="path" href="#">
+          <span class="path-n">02</span>
+          <span>
+            <div class="path-t">需求调研</div>
+            <div class="path-s">把一句模糊诉求，拆成可验证的假设与调研方案</div>
+          </span>
+          <span class="path-go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>
+        </a>
+        <a class="path" href="#">
+          <span class="path-n">03</span>
+          <span>
+            <div class="path-t">流程设计</div>
+            <div class="path-s">设计端到端业务流程、角色分工、异常分支与衡量指标</div>
+          </span>
+          <span class="path-go"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></span>
+        </a>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-head"><span class="sec-title">进行中</span></div>
+      <div class="two">
+        <div class="stream">
+          <a class="item" href="#">
+            <span>
+              <div class="item-t">拆解 Notion</div>
+              <div class="item-m"><span>产品拆解</span><span>5 轮</span><span class="step">第 1 步</span></div>
+            </span>
+            <span class="item-when">今天 00:55</span>
+          </a>
+          <a class="item" href="#">
+            <span>
+              <div class="item-t">给小米手机添加一个 AI 功能</div>
+              <div class="item-m"><span>需求调研</span><span>3 轮</span><span class="step">进行中</span></div>
+            </span>
+            <span class="item-when">今天 00:12</span>
+          </a>
+        </div>
+        <div class="empty">
+          还没有记录总结<br>
+          读书、看文章、随手想到的都可以记在这里
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

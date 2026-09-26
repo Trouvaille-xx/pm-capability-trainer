@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>题库 · 排版方案</title>
+<link rel="stylesheet" href="_shared.css">
+<link rel="stylesheet" href="12-questions.css">
+</head>
+<body>
+
+<aside class="rail" id="rail">
+  <div class="rail-brand">
+    <span class="rail-mark"></span>
+    <span class="rail-name">能力训练平台</span>
+  </div>
+  <nav class="rail-nav" aria-label="主导航">
+    <a class="rail-tab" href="#"><span class="rail-ico"></span><span>概览</span></a>
+    <a class="rail-tab" href="#"><span class="rail-ico"></span><span>记录总结</span></a>
+    <a class="rail-tab" href="#"><span class="rail-ico"></span><span>方法论</span></a>
+    <a class="rail-tab" href="#"><span class="rail-ico"></span><span>AI 训练师</span></a>
+    <a class="rail-tab on" href="#"><span class="rail-ico"></span><span>题库</span></a>
+    <a class="rail-tab" href="#"><span class="rail-ico"></span><span>辅助系统</span></a>
+  </nav>
+</aside>
+
+<main class="page">
+
+  <!-- ============ 列表：题目墙 ============ -->
+  <div class="masthead">
+    <div class="mast-top">
+      <div class="mast-l">
+        <h1>题库</h1>
+        <p class="mast-sub">面试真题、别人的提问、自己想的思考题。先自己答一遍，再看 AI 怎么答。</p>
+      </div>
+      <button class="btn primary">记一道题</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="lookup">
+      <input type="text" placeholder="搜索题目、关键词…">
+      <span class="lookup-hint">18 道中检索</span>
+    </div>
+    <div class="filters">
+      <button class="on" data-filter="all">全部 18</button>
+      <button>面试真题 9</button>
+      <button>思考题 6</button>
+      <button>待作答 5</button>
+      <button>已归档 7</button>
+    </div>
+  </div>
+
+  <div class="wall" id="wall"></div>
+
+  <div class="colophon">
+    <span>一共 18 道题，答过 13 道，还有 5 道空着。</span>
+    <span class="colophon-r">你最常错的是「增长与运营」—— 4 道题里 3 道答偏了。</span>
+  </div>
+
+  <!-- ============ 详情：两版对照 ============ -->
+  <div class="q-shell" style="margin-top:56px">
+
+    <div class="switchbar">
+      <span class="sw-name" id="swName">方案甲 · 对照式</span>
+      <span class="sw-desc" id="swDesc">左右并排，让「我说的 vs 它说的」可以直接横着比</span>
+      <span class="sw-btns">
+        <button data-on="true" data-v="a">甲 对照式</button>
+        <button data-on="false" data-v="b">乙 主次式</button>
+      </span>
+    </div>
+
+    <!-- ---------- 方案甲 ---------- -->
+    <section class="variant" data-on="true" data-v="a">
+      <div class="q-head">
+        <div class="q-head-top">
+          <span>面试真题</span>
+          <span class="state-mark">进行中</span>
+          <span>字节跳动 · 增长产品 · 2026-08</span>
+        </div>
+        <h1>一个已经有 500 万 DAU 的工具类产品，让你把次日留存从 32% 提到 40%，你第一步做什么？</h1>
+      </div>
+
+      <div class="cmp">
+        <div class="cmp-mine">
+          <div class="cmp-colhead">
+            <h2>我的回答</h2>
+            <span class="cmp-note">08-14 · 写了 6 分钟</span>
+          </div>
+          <div class="cmp-body">
+            <p>先拆留存的定义。次日留存是「今天新增的人，明天还回来」，所以它其实由两件事决定：<strong>新增用户的质量</strong>，和<strong>第一天的体验</strong>。32% 到 40% 是 8 个点，靠优化某个按钮的转化是不够的，得先看这 32% 是怎么构成的。</p>
+            <p>我第一步会做三件事，按顺序：</p>
+            <ol>
+              <li>拉最近 30 天的次日留存曲线，按渠道拆。如果某个渠道的新增占了 40% 但留存只有 20%，问题在买量而不在产品里。</li>
+              <li>看首日行为路径。把「次日回来的人」和「没回来的人」在第一天做过什么对比一下 —— 有没有某个动作跟留存强相关，比如完成了首次导出。</li>
+              <li>如果是体验问题，再定位是卡在哪一步。</li>
+            </ol>
+            <p>我倾向于认为这个产品的问题在<strong>「第一次没能体验到核心价值」</strong>，因为工具类的留存通常跟「是否成功完成一次任务」强绑定，而不是跟使用时长绑定。</p>
+          </div>
+        </div>
+
+        <div class="cmp-ai">
+          <div class="cmp-colhead">
+            <h2>AI 回答</h2>
+            <span class="cmp-note">参考</span>
+          </div>
+          <div class="cmp-body">
+            <p>你的拆解方向对了，但漏了一个更前置的问题：<strong>先确认这个目标本身是不是一个「留存问题」。</strong></p>
+            <p>500 万 DAU 的工具产品，次日留存 32% 是偏低还是正常？工具类的次日留存基准普遍在 25–35%（因为需求是偶发的），所以 40% 意味着要把<strong>偶发需求变成习惯</strong>，这是产品定位问题，不是转化率问题。</p>
+            <p>我会这样排优先级：</p>
+            <ol>
+              <li><strong>先算天花板。</strong>如果这个工具的真实使用频率是「每周一次」，那次日留存的理论上限就被场景锁死了，硬做只能靠推送骚扰，反而伤长期留存。</li>
+              <li><strong>再看留存和「完成核心动作」的相关性。</strong>你说得对，但要量化：拉一个队列分析，看完成过首次导出的人次日留存是多少。如果差 3 倍以上，那所有资源都该压在「让新用户尽快完成第一次导出」上。</li>
+              <li><strong>最后才谈召回。</strong>推送、签到、消息中心都是第二位的 —— 它们能拉回短期数字，但 8 个点的提升如果靠通知，三个月后会还回去。</li>
+            </ol>
+            <p>一个你会踩的坑：把「次日留存」当成单一指标去优化，很容易做成「诱导用户第二天来点一下」，DAU 好看了，但 7 日留存和付费都没动。<strong>建议同时挂一个「次周留存」当护栏指标</strong>，否则你没法判断这次提升是真的还是假的。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cmp-aside">
+        <div>
+          <div class="blk-label">相关知识<span class="blk-hint">4 条</span></div>
+          <div class="rel-list">
+            <div class="rel-item">
+              <h3 class="rel-term">留存曲线与队列分析</h3>
+              <p class="rel-gloss">把用户按注册时间分组，分别看每组在第 N 天的留存。相比总体留存，它能排除「新增量变化」造成的假象 —— 总体留存涨了，可能只是最近买了一批高质量用户。</p>
+              <span class="rel-link">在方法论里看这条 →</span>
+            </div>
+            <div class="rel-item">
+              <h3 class="rel-term">护栏指标（Guardrail Metric）</h3>
+              <p class="rel-gloss">优化主指标时同步监控的、不能被牺牲的指标。作用是防止「指标达标但产品变坏」—— 典型例子是为了留存猛发推送。</p>
+              <span class="rel-link">在方法论里看这条 →</span>
+            </div>
+            <div class="rel-item">
+              <h3 class="rel-term">习惯回路</h3>
+              <p class="rel-gloss">触发 → 行为 → 奖励 → 投入。工具类产品想把偶发需求变成习惯，缺的通常是「触发」和「投入」两端，而不是奖励。</p>
+              <span class="rel-link">在方法论里看这条 →</span>
+            </div>
+            <div class="rel-item">
+              <h3 class="rel-term">Aha Moment</h3>
+              <p class="rel-gloss">用户第一次真正体会到产品价值的那个动作。它通常是一个可量化的行为（如「7 天内加满 5 个好友」），而不是一种感受。</p>
+              <span class="rel-link">在方法论里看这条 →</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="blk-label">推荐阅读<span class="blk-hint">4 条</span></div>
+          <div class="read-list">
+            <div class="read-item">
+              <div class="read-body">
+                <a class="read-title" href="#">Retention is a product decision, not a growth tactic</a>
+                <div class="read-meta">Lenny's Newsletter</div>
+                <div class="read-why">直接回应你这题的核心争论：留存到底该在哪个环节解决。</div>
+              </div>
+            </div>
+            <div class="read-item">
+              <div class="read-body">
+                <a class="read-title" href="#">Cohort analysis: a practical guide</a>
+                <div class="read-meta">Amplitude 产品分析手册 · 第 3 章</div>
+                <div class="read-why">你要的队列分析在这里有完整口径定义，包括怎么处理自然周对齐。</div>
+              </div>
+            </div>
+            <div class="read-item">
+              <div class="read-body">
+                <a class="read-title" href="#">Hooked：习惯养成的上瘾模型</a>
+                <div class="read-meta">Nir Eyal · 第 2-3 章</div>
+                <div class="read-why">工具类产品做习惯化的经典框架，跟你提到的「触发」直接相关。</div>
+              </div>
+            </div>
+            <div class="read-item">
+              <div class="read-body">
+                <a class="read-title" href="#">指标的阴暗面：Goodhart's Law 在产品里的表现</a>
+                <div class="read-meta">Stratechery · 2024</div>
+                <div class="read-why">讲为什么「指标达标但产品变坏」是常态，对应护栏指标的由来。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- 方案乙 ---------- -->
+    <section class="variant" data-v="b">
+      <div class="q-head">
+        <div class="q-head-top">
+          <span>面试真题</span>
+          <span class="state-mark">进行中</span>
+          <span>字节跳动 · 增长产品 · 2026-08</span>
+        </div>
+        <h1>一个已经有 500 万 DAU 的工具类产品，让你把次日留存从 32% 提到 40%，你第一步做什么？</h1>
+      </div>
+
+      <div class="lead">
+        <div class="lead-main">
+          <div class="blk-label">我的回答<span class="blk-hint">08-14 · 6 分钟</span></div>
+          <div class="cmp-body">
+            <p>先拆留存的定义。次日留存是「今天新增的人，明天还回来」，所以它其实由两件事决定：<strong>新增用户的质量</strong>，和<strong>第一天的体验</strong>。32% 到 40% 是 8 个点，靠优化某个按钮的转化是不够的，得先看这 32% 是怎么构成的。</p>
+            <p>我第一步会做三件事，按顺序：</p>
+            <ol>
+              <li>拉最近 30 天的次日留存曲线，按渠道拆。如果某个渠道的新增占了 40% 但留存只有 20%，问题在买量而不在产品里。</li>
+              <li>看首日行为路径。把「次日回来的人」和「没回来的人」在第一天做过什么对比一下 —— 有没有某个动作跟留存强相关，比如完成了首次导出。</li>
+              <li>如果是体验问题，再定位是卡在哪一步。</li>
+            </ol>
+            <p>我倾向于认为这个产品的问题在<strong>「第一次没能体验到核心价值」</strong>，因为工具类的留存通常跟「是否成功完成一次任务」强绑定，而不是跟使用时长绑定。</p>
+          </div>
+        </div>
+
+        <aside class="lead-side">
+          <div class="blk-label">AI 回答<span class="blk-hint">参考</span></div>
+          <div class="cmp-body">
+            <p>你的拆解方向对了，但漏了一个更前置的问题：<strong>先确认这个目标本身是不是一个「留存问题」。</strong></p>
+            <p>500 万 DAU 的工具产品，次日留存 32% 是偏低还是正常？工具类的次日留存基准普遍在 25–35%，所以 40% 意味着要把偶发需求变成习惯 —— 这是定位问题，不是转化率问题。</p>
+            <p>我会这样排优先级：先算天花板；再看留存和「完成核心动作」的相关性；最后才谈召回。</p>
+            <p>你会踩的坑：把次日留存当单一指标优化，容易做成「诱导用户第二天来点一下」，DAU 好看了但 7 日留存没动。<strong>建议挂一个次周留存当护栏。</strong></p>
+          </div>
+        </aside>
+      </div>
+
+      <div class="lead-foot">
+        <div>
+          <div class="blk-label">相关知识<span class="blk-hint">4 条</span></div>
+          <div class="rel-list">
+            <div class="rel-item">
+              <h3 class="rel-term">留存曲线与队列分析</h3>
+              <p class="rel-gloss">把用户按注册时间分组，分别看每组第 N 天的留存。能排除「新增量变化」造成的假象。</p>
+              <span class="rel-link">在方法论里看这条 →</span>
+            </div>
+            <div class="rel-item">
+              <h3 class="rel-term">护栏指标（Guardrail Metric）</h3>
+              <p class="rel-gloss">优化主指标时同步监控、不能被牺牲的指标，防止「指标达标但产品变坏」。</p>
+              <span class="rel-link">在方法论里看这条 →</span>
+            </div>
+            <div class="rel-item">
+              <h3 class="rel-term">习惯回路</h3>
+              <p class="rel-gloss">触发 → 行为 → 奖励 → 投入。工具类想把偶发需求变习惯，缺的通常是两端。</p>
+              <span class="rel-link">在方法论里看这条 →</span>
+            </div>
+            <div class="rel-item">
+              <h3 class="rel-term">Aha Moment</h3>
+              <p class="rel-gloss">用户第一次真正体会到产品价值的那个动作，通常可量化。</p>
+              <span class="rel-link">在方法论里看这条 →</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="blk-label">推荐阅读<span class="blk-hint">4 条</span></div>
+          <div class="read-list">
+            <div class="read-item">
+              <div class="read-body">
+                <a class="read-title" href="#">Retention is a product decision, not a growth tactic</a>
+                <div class="read-meta">Lenny's Newsletter</div>
+                <div class="read-why">直接回应你这题的核心争论。</div>
+              </div>
+            </div>
+            <div class="read-item">
+              <div class="read-body">
+                <a class="read-title" href="#">Cohort analysis: a practical guide</a>
+                <div class="read-meta">Amplitude 产品分析手册 · 第 3 章</div>
+                <div class="read-why">队列分析的完整口径定义。</div>
+              </div>
+            </div>
+            <div class="read-item">
+              <div class="read-body">
+                <a class="read-title" href="#">Hooked：习惯养成的上瘾模型</a>
+                <div class="read-meta">Nir Eyal · 第 2-3 章</div>
+                <div class="read-why">习惯化的经典框架。</div>
+              </div>
+            </div>
+            <div class="read-item">
+              <div class="read-body">
+                <a class="read-title" href="#">指标的阴暗面：Goodhart's Law 在产品里的表现</a>
+                <div class="read-meta">Stratechery · 2024</div>
+                <div class="read-why">护栏指标的由来。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+/* ---------- 题卡数据 ---------- */
+const QS = [
+  {t:"一个已经有 500 万 DAU 的工具类产品，让你把次日留存从 32% 提到 40%，你第一步做什么？",s:"面试真题",f:"字节跳动",st:["1","1","1","1","0"],mine:true,ai:true,rel:4,rd:4,when:"08-14"},
+  {t:"如果让你从零设计一个面向中小商家的库存管理系统，你会先搞清楚哪三件事？",s:"面试真题",f:"某 SaaS 公司",st:["1","1","1","0","0"],mine:true,ai:true,rel:3,rd:3,when:"08-12"},
+  {t:"为什么大部分社区产品的「优质内容」都是极少数人生产的？这对产品设计意味着什么？",s:"思考题",f:"自己想的",st:["1","1","1","1","1"],mine:true,ai:true,rel:5,rd:3,when:"08-09"},
+  {t:"你的产品数据都在跌，但老板只让你「优化一下体验」。你怎么把这个模糊需求变成可执行的方案？",s:"面试真题",f:"腾讯",st:["1","1","0","0","0"],mine:true,ai:false,rel:0,rd:0,when:"08-15"},
+  {t:"设计一个功能时，怎么判断它该做「简单但能用」还是「复杂但强大」？",s:"思考题",f:"自己想的",st:["1","0","0","0","0"],mine:false,ai:false,rel:0,rd:0,when:"08-16"},
+  {t:"竞品刚上线了一个跟我们很像的功能，而且做得更好。作为 PM 你的前三步是什么？",s:"面试真题",f:"美团",st:["1","1","1","1","1"],mine:true,ai:true,rel:4,rd:4,when:"07-28"},
+  {t:"如何评估一个「AI 助手」功能到底有没有给用户创造价值？",s:"思考题",f:"朋友问的",st:["1","1","1","0","0"],mine:true,ai:true,rel:3,rd:2,when:"08-05"},
+  {t:"你负责的模块上线后，核心转化率没变，但客服工单涨了 3 倍。你怎么定位问题？",s:"面试真题",f:"阿里",st:["1","1","1","0","0"],mine:true,ai:true,rel:3,rd:3,when:"08-02"},
+  {t:"B 端产品的「用户体验」和 C 端有什么本质区别？",s:"思考题",f:"自己想的",st:["1","1","1","1","1"],mine:true,ai:true,rel:4,rd:4,when:"07-22"},
+  {t:"如果只能看一个指标来判断产品健康度，你选什么？为什么？",s:"面试真题",f:"快手",st:["1","1","0","0","0"],mine:true,ai:false,rel:0,rd:0,when:"08-17"},
+  {t:"怎么说服一个技术团队接受一个「看起来收益不大」的需求？",s:"思考题",f:"自己想的",st:["1","1","1","1","0"],mine:true,ai:true,rel:3,rd:3,when:"07-30"},
+  {t:"让你接手一个「没人用」的内部系统，你怎么让它活过来？",s:"面试真题",f:"滴滴",st:["1","0","0","0","0"],mine:false,ai:false,rel:0,rd:0,when:"08-18"},
+  {t:"产品的「北极星指标」该怎么选？选错了会怎样？",s:"面试真题",f:"京东",st:["1","1","1","1","1"],mine:true,ai:true,rel:5,rd:4,when:"07-18"},
+  {t:"为什么很多产品的新手引导做了等于没做？",s:"思考题",f:"自己想的",st:["1","1","1","0","0"],mine:true,ai:true,rel:3,rd:3,when:"08-01"},
+  {t:"你会怎么设计一次用户访谈，让用户说出真话而不是客套话？",s:"面试真题",f:"小红书",st:["1","1","1","1","0"],mine:true,ai:true,rel:4,rd:3,when:"07-25"},
+];
+
+const wall = document.getElementById('wall');
+wall.innerHTML = QS.map(q => {
+  const done = q.st.filter(x=>x==="1").length;
+  const steps = q.st.map((v,i) => 
+    `<span class="q-step${i===1?' is-mine':''}" data-on="${v==='1'}"></span>`
+  ).join('');
+  return `
+  <article class="note">
+    <span class="pin"></span>
+    <div class="note-domain">
+      <span>${q.s}</span>
+      <span class="state-mark">${q.mine && q.ai ? "已完成" : q.mine ? "差 AI" : "待作答"}</span>
+    </div>
+    <h2 class="q-title">${q.t}</h2>
+    <div class="q-steps">${steps}</div>
+    <div class="q-foot">
+      <span>${q.f}</span>
+      <span class="q-count">${done}/5 · ${q.when}</span>
+    </div>
+  </article>`;
+}).join('');
+
+/* ---------- 方案切换 ---------- */
+const NAMES = {
+  a: ["方案甲 · 对照式", "左右并排，让「我说的 vs 它说的」可以直接横着比"],
+  b: ["方案乙 · 主次式", "我的回答是主角占主栏，AI 回答退到侧栏，知识和阅读沉到底部"],
+};
+document.querySelectorAll('.switchbar button').forEach(b => {
+  b.onclick = () => {
+    const v = b.dataset.v;
+    document.querySelectorAll('.switchbar button').forEach(x => x.dataset.on = String(x === b));
+    document.querySelectorAll('.variant').forEach(s => s.dataset.on = String(s.dataset.v === v));
+    document.querySelector('.sw-name').textContent = NAMES[v][0];
+    document.querySelector('.sw-desc').textContent = NAMES[v][1];
+  };
+});
+</script>
+</body>
+</html>

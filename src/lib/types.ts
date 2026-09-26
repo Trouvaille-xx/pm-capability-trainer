@@ -165,6 +165,8 @@ export interface TrainingReport {
   suggestions: string[];
   /** 下一步练什么 */
   nextSteps: string[];
+  /** 用户给这份报告打的标签，便于日后检索 */
+  tags?: string[];
   generatedAt: string;
 }
 
@@ -179,6 +181,17 @@ export interface TrainingSession {
   /** 完全独立训练模式下的作答 */
   submission: string;
   report?: TrainingReport;
+  /* ---- 与「记录总结」「方法论」的联动 ---- */
+  /**
+   * 本次训练基于哪条记录总结展开。
+   * 有了它，「读书 → 训练」才真正接上：训练时会把这
+   * 条记录的总结与要点注入提示词作为素材。
+   */
+  captureId?: ID;
+  /** 本次训练显式指定的方法论卡片，会作为「可用方法论」注入提示词 */
+  methodologyCardIds?: ID[];
+  /** 这次训练是从哪次训练的报告建议里开出来的（血缘） */
+  retryOf?: ID;
   /* ---- 分步场景（如产品拆解）用到的字段 ---- */
   /** 产品类型：C端 / B端 / AI功能 / 完整产品 */
   productType?: string;
@@ -189,6 +202,22 @@ export interface TrainingSession {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * 训练列表用的轻量投影。
+ *
+ * 列表页只需要题目、场景、分数这些摘要，不需要整份 transcript。
+ * 会话多了之后按完整对象拉列表会很沉，所以列表走 ?view=list。
+ */
+export type TrainingSessionListItem = Omit<
+  TrainingSession,
+  "transcript" | "submission"
+> & {
+  /** 已发生的对话轮数 */
+  turnCount: number;
+  /** 独立作答的字数 */
+  submissionLength: number;
+};
 
 /* ------------------------------------------------------------------ *
  * 模块四：辅助系统
@@ -245,6 +274,33 @@ export interface AISettings {
   /** 已配置的 MCP 服务器 */
   mcpServers: MCPServer[];
 }
+
+/* ------------------------------------------------------------------ *
+ * 对外投影：回给浏览器的设置绝不能带密钥明文
+ *
+ * 前端只需要知道「配没配」（用来做空态拦截与占位提示），
+ * 不需要、也不应该拿到密钥本身。写入仍然走完整字段。
+ * ------------------------------------------------------------------ */
+
+export type PublicWebSearchSettings = Omit<WebSearchSettings, "apiKey"> & {
+  /** 是否已配置密钥（不回传密钥本身） */
+  hasKey: boolean;
+};
+
+export type PublicMCPServer = Omit<MCPServer, "token"> & {
+  /** 是否已配置访问令牌（不回传令牌本身） */
+  hasToken: boolean;
+};
+
+export type PublicAISettings = Omit<
+  AISettings,
+  "apiKey" | "webSearch" | "mcpServers"
+> & {
+  /** 是否已配置模型密钥（不回传密钥本身） */
+  apiKeySet: boolean;
+  webSearch: PublicWebSearchSettings;
+  mcpServers: PublicMCPServer[];
+};
 
 /**
  * 提示词的作用域。

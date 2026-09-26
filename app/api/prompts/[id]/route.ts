@@ -1,23 +1,47 @@
-import { handle, ok, optionalString, readBody } from "@/lib/api";
+import { assertSameOrigin, handle, ok, readBody, requireString } from "@/lib/api";
 import { patch, remove } from "@/lib/store";
-import type { PromptTemplate } from "@/lib/types";
+import type { PromptScope, PromptTemplate, TrainingMode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+const SCOPES: PromptScope[] = [
+  "product-teardown",
+  "requirement-research",
+  "process-design",
+  "assistant",
+  "grill",
+  "socratic",
+  "solo",
+  "report",
+  "chat",
+];
+
+const MODES: TrainingMode[] = ["assistant", "grill", "socratic", "solo"];
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: Params) {
   return handle(async () => {
+    assertSameOrigin(request);
     const { id } = await params;
     const body = await readBody<PromptTemplate>(request);
 
     const changes: Partial<PromptTemplate> = {
       updatedAt: new Date().toISOString(),
     };
-    if (body.name !== undefined) changes.name = optionalString(body.name, 100);
-    if (body.system !== undefined) changes.system = optionalString(body.system, 20000);
-    if (body.scope !== undefined) changes.scope = body.scope;
-    if (body.mode !== undefined) changes.mode = body.mode;
+    // 名称与内容不允许被 PATCH 清空，枚举按白名单写入（与 POST 一致）
+    if (body.name !== undefined) {
+      changes.name = requireString(body.name, "模板名称", { max: 100 });
+    }
+    if (body.system !== undefined) {
+      changes.system = requireString(body.system, "提示词内容", { max: 20000 });
+    }
+    if (SCOPES.includes(body.scope as PromptScope)) {
+      changes.scope = body.scope;
+    }
+    if (MODES.includes(body.mode as TrainingMode)) {
+      changes.mode = body.mode;
+    }
     if (body.enabled !== undefined) changes.enabled = body.enabled === true;
 
     const updated = await patch("prompts", id, changes);
@@ -26,8 +50,9 @@ export async function PATCH(request: Request, { params }: Params) {
   });
 }
 
-export async function DELETE(_request: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: Params) {
   return handle(async () => {
+    assertSameOrigin(request);
     const { id } = await params;
     const deleted = await remove("prompts", id);
     if (!deleted) return ok({ error: "提示词不存在" }, 404);
