@@ -23,3 +23,6 @@ settings.yml
 Thumbs.db
 .idea/
 .vscode/
+
+# Claude Code 的 worktree 注册信息（属于工具状态，不入库）
+.claude/worktrees/
