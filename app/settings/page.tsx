@@ -16,8 +16,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { PROMPT_SCOPES, scopeName } from "@/lib/catalog";
+import { MODES, PROMPT_SCOPES, SCENARIOS, scopeName } from "@/lib/catalog";
 import { apiGet, apiSend } from "@/lib/client";
+import { plainSummary } from "@/lib/board";
 import { ConfirmDialog } from "@/components/Modal";
 import { PROVIDER_LABELS } from "@/lib/websearch";
 import type {
@@ -99,6 +100,29 @@ const PROMPT_VARIABLES: { name: string; desc: string }[] = [
   { name: "current_step", desc: "当前进行到第几步" },
   { name: "current_date", desc: "今天的日期，形如 2026-02-14" },
 ];
+
+/**
+ * 一条模板什么时候会生效。
+ *
+ * 之前列表上只写「作用域是产品拆解」这种内部叫法，得自己推它到底管哪一段；
+ * 直接写成「产品拆解训练时」这种话，找东西才不用挨个展开猜。
+ */
+function scopeWhen(scope: PromptScope): string {
+  if (scope === "report") return "生成训练报告时";
+  if (scope === "chat") return "每次拼装的通用约束";
+  const scenario = SCENARIOS.find((s) => s.id === scope);
+  if (scenario) return `${scenario.name}训练时`;
+  const mode = MODES.find((m) => m.id === scope);
+  if (mode) return `「${mode.name}」模式训练时`;
+  return "未接进拼装流程";
+}
+
+/** 每个分组是干什么的——光有「场景块」三个字，看不出跟最终提示词什么关系。 */
+const GROUP_LEAD: Record<string, string> = {
+  场景块: "决定这次训练走什么框架、分几步，以及每一步要交什么。",
+  模式块: "决定训练师怎么陪你练：给示范、高强度质询、只追问，还是不参与。",
+  其它: "报告生成的口径，以及每次拼装都会带上的通用约束。",
+};
 
 const PRESETS: { name: string; baseURL: string; model: string; note: string }[] = [
   {
@@ -821,6 +845,19 @@ export default function SettingsPage() {
             </span>
           </div>
 
+          {/* 先说清楚这些块怎么拼成最终提示词，下面的分组才有位置感 */}
+          <div className="set-hint" style={{ marginTop: 0 }}>
+            训练时的系统提示词按这个顺序拼成：
+            <br />
+            <span style={{ color: "var(--ink-3)" }}>
+              ① 场景块 → ② 当前步骤指引 → ③ 你关联的输入素材 → ④ 选中的方法论 →
+              ⑤ 模式块 → ⑥ 通用约束
+            </span>
+            <br />
+            下面只列 ①②⑤⑥ 这四类（可以改）。②③④
+            是训练开始时按你的选择与进度自动带上的，不在这里配。
+          </div>
+
           {promptMessage && !openPrompt ? (
             <div className="set-hint" style={{ marginTop: 0, marginBottom: 4 }}>
               {promptMessage}
@@ -829,8 +866,16 @@ export default function SettingsPage() {
 
           {promptGroups.map(({ group, items }) => (
             <div key={group}>
-              <div className="set-hint" style={{ margin: "22px 0 0" }}>
-                {group}（{items.length}）
+              <div style={{ margin: "26px 0 2px" }}>
+                <span
+                  className="set-hint"
+                  style={{ margin: 0, color: "var(--ink-2)" }}
+                >
+                  {group}（{items.length}）
+                </span>
+                <div className="set-hint" style={{ margin: "2px 0 0" }}>
+                  {GROUP_LEAD[group] ?? ""}
+                </div>
               </div>
 
               {items.map((template) => {
@@ -845,9 +890,39 @@ export default function SettingsPage() {
                       aria-expanded={open}
                       onClick={() => (open ? closeEditor() : openEditor(template))}
                     >
-                      <span className="set-tpl-main">
-                        <span className="set-tpl-title">{template.name}</span>
-                        <span className="set-tpl-meta">{scopeName(template.scope)}</span>
+                      <span
+                        className="set-tpl-main"
+                        style={{
+                          flexDirection: "column",
+                          alignItems: "flex-start",
+                          gap: 3,
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "flex",
+                            alignItems: "baseline",
+                            gap: 12,
+                          }}
+                        >
+                          <span className="set-tpl-title">{template.name}</span>
+                          <span className="set-tpl-meta">
+                            {scopeWhen(template.scope)}
+                          </span>
+                        </span>
+                        {/* 收起时给一行内容预览：不展开也能知道它大概写了什么 */}
+                        <span
+                          style={{
+                            fontSize: 12.5,
+                            color: "var(--ink-4)",
+                            maxWidth: 620,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {plainSummary(template.system, 60)}
+                        </span>
                       </span>
                       <span className="set-tpl-meta">
                         {template.builtin ? "内置" : "自定义"}

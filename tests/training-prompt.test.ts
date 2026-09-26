@@ -121,3 +121,49 @@ describe("trainingSystemPrompt 的联动注入", () => {
     expect(text).toContain("产品经理能力训练");
   });
 });
+
+describe("通用约束块来自可编辑的模板", () => {
+  /** 覆盖 prompts.json，方便逐条验证拼装结果。 */
+  async function useChatTemplate(system: string, enabled: boolean) {
+    await writeFile(
+      path.join(dir, "prompts.json"),
+      JSON.stringify([
+        {
+          id: "prm-chat",
+          name: "通用约束",
+          scope: "chat",
+          system,
+          enabled,
+          builtin: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ]),
+      "utf8",
+    );
+  }
+
+  it("在界面上改「通用约束」，拼出来的提示词会跟着变（回归：以前改了没效果）", async () => {
+    await useChatTemplate("自定义约束：只有一条，说人话。", true);
+
+    const text = await prompts.trainingSystemPrompt(makeSession());
+    expect(text).toContain("自定义约束：只有一条，说人话。");
+  });
+
+  it("停用「通用约束」后，它就不再被拼进去", async () => {
+    await useChatTemplate("自定义约束：只有一条，说人话。", false);
+
+    const text = await prompts.trainingSystemPrompt(makeSession());
+    expect(text).not.toContain("自定义约束：只有一条，说人话。");
+    // 其余块不受影响
+    expect(text).toContain("产品经理能力训练");
+  });
+
+  it("模板被停用时不会悄悄退回内置文案（否则「停用」等于没停）", async () => {
+    await useChatTemplate("停用测试", false);
+
+    const text = await prompts.trainingSystemPrompt(makeSession());
+    // 这句来自内置种子模板的通用约束，停用后不该再出现
+    expect(text).not.toContain("不替用户完成他的产出");
+  });
+});

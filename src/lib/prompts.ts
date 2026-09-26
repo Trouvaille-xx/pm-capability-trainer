@@ -111,6 +111,12 @@ function stepBlock(session: TrainingSession): string {
   return lines.join("\n");
 }
 
+/**
+ * 通用约束块的兜底文案。
+ *
+ * 正常情况下这个块来自「提示词管理 → 通用约束」那条模板（scope 为 chat），
+ * 这里只是种子数据被清空时的兜底，避免系统提示词缺了最基本的约束。
+ */
 const COMMON_RULES = `通用要求：
 - 全程使用中文
 - 每轮回答保持紧凑，一般不超过 250 字；需要展开时用短列表而不是长段落
@@ -216,7 +222,17 @@ export async function trainingSystemPrompt(
   const modeBlock = map.get(session.mode);
   if (modeBlock) parts.push(applyVariables(modeBlock, vars));
 
-  parts.push(COMMON_RULES);
+  /* 通用约束块以「提示词管理 → 通用约束」那条模板为准（scope 为 chat）。
+     这里以前是硬编码常量，于是界面上那条模板改了、停用了都没有任何效果——
+     列表里摆着一个无效条目，是这个板块最让人困惑的地方。
+     现在它被停用就真的不追加；只在整份种子数据都缺失时才退回兜底文案。 */
+  const commonRules = map.get("chat");
+  if (commonRules !== undefined) {
+    parts.push(applyVariables(commonRules, vars));
+  } else if (!seedPrompts().some((template) => template.scope === "chat")) {
+    // 连种子数据里都没有这条模板（说明数据被清空过），才退回兜底文案
+    parts.push(COMMON_RULES);
+  }
 
   return parts.join("\n\n---\n\n");
 }
