@@ -1,22 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { MODES, SCENARIOS, captureKindName, modeName, scenarioName } from "@/lib/catalog";
-import { apiGet, formatDate } from "@/lib/client";
+import { apiGet, formatDate, scoreTone } from "@/lib/client";
+import { buildProfile, dimensionTrend } from "@/lib/profile";
+import { recommendNext, suggestionHref } from "@/lib/review";
 import {
   IconArrowRight,
-  IconCalendar,
   IconCapture,
   IconFlow,
   IconMethodology,
   IconReport,
   IconSearch,
+  IconTarget,
   IconTrainer,
+  IconTrend,
   IconUser,
 } from "@/components/icons";
-import type { Capture, MethodologyCard, TrainingSession } from "@/lib/types";
+import type {
+  Capture,
+  MethodologyCard,
+  TrainingSessionListItem,
+} from "@/lib/types";
 
 /** 每个训练场景配一个图标，让入口一眼能区分开。 */
 const SCENARIO_ICONS = {
@@ -25,10 +32,17 @@ const SCENARIO_ICONS = {
   "process-design": IconFlow,
 } as const;
 
+const TREND_LABEL = {
+  up: "↑ 在变好",
+  down: "↓ 在退步",
+  flat: "→ 持平",
+  unknown: "",
+} as const;
+
 export default function DashboardPage() {
   const [captures, setCaptures] = useState<Capture[]>([]);
   const [cards, setCards] = useState<MethodologyCard[]>([]);
-  const [sessions, setSessions] = useState<TrainingSession[]>([]);
+  const [sessions, setSessions] = useState<TrainingSessionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -39,7 +53,8 @@ export default function DashboardPage() {
         const [c, m, s] = await Promise.all([
           apiGet<Capture[]>("/api/captures"),
           apiGet<MethodologyCard[]>("/api/methodology"),
-          apiGet<TrainingSession[]>("/api/sessions"),
+          // 概览只看摘要（报告已在其中），不必拉整份 transcript
+          apiGet<TrainingSessionListItem[]>("/api/sessions?view=list"),
         ]);
         if (!alive) return;
         setCaptures(c);
@@ -56,13 +71,16 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const scored = sessions.filter((s) => s.report);
-  const average = scored.length
-    ? Math.round(
-        scored.reduce((sum, s) => sum + (s.report?.overall ?? 0), 0) /
-          scored.length,
-      )
-    : null;
+  /* 画像是对历史报告做聚合，纯计算，不落后端 */
+  const profile = useMemo(() => buildProfile(sessions), [sessions]);
+  const suggestions = useMemo(() => recommendNext(sessions), [sessions]);
+  const weakSet = useMemo(
+    () => new Set(profile.weakest.map((stat) => stat.dimension)),
+    [profile.weakest],
+  );
+
+  /* 加载中显示占位符而不是 0——否则新用户会看到一瞬间的「0 条记录」 */
+  const statValue = (value: number) => (loading ? "—" : value);
 
   return (
     <div className="stack">
@@ -84,8 +102,8 @@ export default function DashboardPage() {
         <p>
           {sessions.length === 0
             ? "挑一个场景，选一种模式。AI 会陪你拆解、质询或追问，结束后给你一份带评分的报告。"
-            : average !== null
-              ? `当前平均 ${average} 分。挑一个场景继续，或回到历史报告复看薄弱维度。`
+            : profile.averagePercent !== null
+              ? `当前平均得分率 ${profile.averagePercent}%。挑一个场景继续，或看看下面的能力画像找薄弱项。`
               : "挑一个场景继续训练。"}
         </p>
         <div className="hero-row">
@@ -103,31 +121,120 @@ export default function DashboardPage() {
         <div className="section-label">数据概览</div>
         <div className="grid grid-4">
           <StatCard
-            value={captures.length}
+            value={statValue(captures.length)}
             label="条记录总结"
             Icon={IconCapture}
             tone="brand"
           />
           <StatCard
-            value={cards.length}
+            value={statValue(cards.length)}
             label="个知识点"
             Icon={IconMethodology}
             tone="good"
           />
           <StatCard
-            value={sessions.length}
+            value={statValue(sessions.length)}
             label="次训练"
             Icon={IconTrainer}
             tone="warn"
           />
           <StatCard
-            value={average ?? "—"}
-            label="平均得分"
+            value={loading ? "—" : profile.averagePercent ?? "—"}
+            label="平均得分率"
             Icon={IconReport}
             tone="brand"
           />
         </div>
       </div>
+
+      {/* 能力画像：跨会话看趋势，这是单个报告给不了的东西 */}
+      {profile.scoredSessions > 0 ? (
+        <div>
+          <div className="section-label">
+            能力画像 · 基于 {profile.scoredSessions} 份报告
+          </div>
+          <div className="card">
+            <div className="row" style={{ alignItems: "flex-start", marginBottom: 4 }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div className="row" style={{ gap: 7 }}>
+                  <IconTrend width={15} height={15} style={{ color: "var(--brand)" }} />
+                  <h2>各维度平均得分率</h2>
+                </div>
+                <div className="list-sub">
+                  越靠上的越弱。分数已按各场景满分归一，50 分制与百分制可比。
+                </div>
+              </div>
+              <Sparkline points={profile.trend.map((point) => point.percent)} />
+            </div>
+
+            <div>
+              {profile.dimensions.map((stat) => {
+                const tone = scoreTone(stat.average);
+                const trend = dimensionTrend(stat);
+                return (
+                  <div key={stat.dimension} className="score-row">
+                    <div className="row" style={{ gap: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 550 }}>
+                        {stat.dimension}
+                      </span>
+                      {weakSet.has(stat.dimension) ? (
+                        <span className="tag tag-bad">薄弱</span>
+                      ) : null}
+                    </div>
+                    <div className="score-bar">
+                      <div
+                        className={`score-fill ${tone}`}
+                        style={{ width: `${Math.max(0, Math.min(100, stat.average))}%` }}
+                      />
+                    </div>
+                    <div className="score-value">
+                      {stat.average}
+                      <span className="score-max">%</span>
+                    </div>
+                    <div className="score-comment">
+                      {stat.count} 次评分
+                      {TREND_LABEL[trend] ? ` · ${TREND_LABEL[trend]}` : ""}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* 下一步练什么：把报告里的薄弱项变成一条点得开的训练 */}
+      {suggestions.length > 0 ? (
+        <div>
+          <div className="section-label">下一步练什么</div>
+          <div className="stack" style={{ gap: 9 }}>
+            {suggestions.map((suggestion, index) => (
+              <div key={`${suggestion.dimension}-${index}`} className="card card-tight">
+                <div className="row" style={{ alignItems: "flex-start" }}>
+                  <span className="stat-icon stat-icon-warn">
+                    <IconTarget width={16} height={16} />
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="list-title">
+                      {suggestion.starter
+                        ? "先完整走一遍产品拆解"
+                        : `再练一轮「${suggestion.dimension}」`}
+                    </div>
+                    <div className="list-sub">{suggestion.reason}</div>
+                  </div>
+                  <Link
+                    href={suggestionHref(suggestion)}
+                    className="btn btn-sm btn-primary"
+                  >
+                    去训练
+                    <IconArrowRight width={13} height={13} />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <div className="section-label">开始一次训练</div>
@@ -137,7 +244,7 @@ export default function DashboardPage() {
             return (
               <Link
                 key={scenario.id}
-                href={`/trainer?scenario=${scenario.id}`}
+                href={`/trainer/new?scenario=${scenario.id}`}
                 className="option"
               >
                 <span className="option-icon">
@@ -239,6 +346,44 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 总分走势的小折线。没有依赖图表库，够用就行。 */
+function Sparkline({ points }: { points: number[] }) {
+  if (points.length < 2) return null;
+
+  const width = 180;
+  const height = 44;
+  const step = width / (points.length - 1);
+  const path = points
+    .map((value, index) => {
+      const x = index * step;
+      const y = height - (Math.max(0, Math.min(100, value)) / 100) * height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+
+  return (
+    <div style={{ textAlign: "right" }}>
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`总分走势：${points.join(" → ")}`}
+      >
+        <polyline
+          points={path}
+          fill="none"
+          stroke="var(--brand)"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <div className="stat-label">总分走势（{points.length} 次）</div>
     </div>
   );
 }

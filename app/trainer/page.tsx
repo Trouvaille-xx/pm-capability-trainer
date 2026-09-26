@@ -11,7 +11,7 @@ import {
   IconReport,
   IconTrainer,
 } from "@/components/icons";
-import type { AISettings, TrainingSession } from "@/lib/types";
+import type { PublicAISettings, TrainingSessionListItem } from "@/lib/types";
 
 /**
  * 训练列表。
@@ -22,20 +22,22 @@ import type { AISettings, TrainingSession } from "@/lib/types";
  * 历史又叠在下面，页面又长又杂。
  */
 export default function TrainerPage() {
-  const [sessions, setSessions] = useState<TrainingSession[]>([]);
+  const [sessions, setSessions] = useState<TrainingSessionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [aiReady, setAiReady] = useState<boolean | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     try {
       const [list, settings] = await Promise.all([
-        apiGet<TrainingSession[]>("/api/sessions"),
-        apiGet<AISettings>("/api/settings"),
+        // view=list：列表只需要摘要，不拉整份 transcript
+        apiGet<TrainingSessionListItem[]>("/api/sessions?view=list"),
+        apiGet<PublicAISettings>("/api/settings"),
       ]);
       setSessions(list);
-      setAiReady(settings.apiKey.trim() !== "");
+      setAiReady(settings.apiKeySet);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -59,13 +61,23 @@ export default function TrainerPage() {
     return { total: sessions.length, scored: scored.length, avg };
   }, [sessions]);
 
-  const filtered = useMemo(
-    () =>
-      filter === "all"
-        ? sessions
-        : sessions.filter((s) => s.scenario === filter),
-    [sessions, filter],
-  );
+  const filtered = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return sessions.filter((s) => {
+      if (filter !== "all" && s.scenario !== filter) return false;
+      if (keyword === "") return true;
+      // 题目、报告摘要与标签都能搜到，便于翻旧账
+      const haystack = [
+        s.topic,
+        s.report?.summary ?? "",
+        ...(s.report?.tags ?? []),
+        ...(s.report?.improvements ?? []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [sessions, filter, query]);
 
   return (
     <div className="stack">
@@ -132,6 +144,26 @@ export default function TrainerPage() {
             </div>
           </div>
 
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              className="input"
+              style={{ maxWidth: 280 }}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜题目、报告摘要或标签…"
+            />
+            {query !== "" ? (
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => setQuery("")}
+              >
+                清除
+              </button>
+            ) : null}
+            <div className="spacer" />
+            <span className="stat-label">{filtered.length} 条</span>
+          </div>
+
           <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
             <button
               className={`tag${filter === "all" ? " tag-brand" : ""}`}
@@ -157,6 +189,9 @@ export default function TrainerPage() {
           </div>
 
           <div className="folder-pane">
+            {filtered.length === 0 ? (
+              <div className="empty">没有匹配的训练记录，换个关键词或切换筛选试试。</div>
+            ) : (
             <div className="stack" style={{ gap: 9 }}>
               {filtered.map((session) => {
                 const tone = session.report
@@ -218,6 +253,7 @@ export default function TrainerPage() {
                 );
               })}
             </div>
+            )}
           </div>
         </>
       )}

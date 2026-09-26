@@ -37,6 +37,26 @@ export function safeFileName(text: string): string {
   );
 }
 
+/**
+ * 压成单行。
+ *
+ * 标题、列表项、表格单元格都容不下换行——用户题目里敲的回车会直接把
+ * 一段文字变成新的标题/列表项，把导出文档的结构冲散。
+ * 正文（对话记录本身）是文档内容，保持原样不动。
+ */
+function inline(text: string): string {
+  return text.replace(/\s*\n+\s*/g, " ").trim();
+}
+
+/** 表格单元格：先压成单行，再转义竖线（否则会把列切断）。 */
+function cell(text: string): string {
+  return inline(text).replace(/\|/g, "\\|");
+}
+
+function clip(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}…`;
+}
+
 /** 完整训练记录 + 评分报告，导出为 Markdown。 */
 export function sessionToMarkdown(session: TrainingSession): string {
   const steps = scenarioSteps(session.scenario);
@@ -46,9 +66,9 @@ export function sessionToMarkdown(session: TrainingSession): string {
   lines.push(`# ${scenarioName(session.scenario)}训练记录`, "");
 
   lines.push("## 基本信息", "");
-  lines.push(`- 拆解对象：${session.topic}`);
-  if (session.productType) lines.push(`- 产品类型：${session.productType}`);
-  if (session.analysisGoal) lines.push(`- 拆解目标：${session.analysisGoal}`);
+  lines.push(`- 拆解对象：${inline(session.topic)}`);
+  if (session.productType) lines.push(`- 产品类型：${inline(session.productType)}`);
+  if (session.analysisGoal) lines.push(`- 拆解目标：${inline(session.analysisGoal)}`);
   lines.push(`- 训练模式：${modeName(session.mode)}`);
   lines.push(`- 训练日期：${fmtDate(session.createdAt)}`);
   if (steps.length > 0) {
@@ -98,7 +118,7 @@ export function sessionToMarkdown(session: TrainingSession): string {
       lines.push("| --- | --- | --- |");
       for (const item of report.scores) {
         lines.push(
-          `| ${item.dimension} | ${item.score}/${item.max} | ${item.comment.replace(/\|/g, "\\|")} |`,
+          `| ${cell(item.dimension)} | ${item.score}/${item.max} | ${cell(item.comment)} |`,
         );
       }
       lines.push("");
@@ -138,13 +158,13 @@ export function sessionToPptOutline(session: TrainingSession): string {
   const lines: string[] = [];
 
   lines.push(`# ${scenarioName(session.scenario)} · 汇报大纲`, "");
-  lines.push(`> 拆解对象：${session.topic}`);
-  if (session.productType) lines.push(`> 产品类型：${session.productType}`);
-  if (session.analysisGoal) lines.push(`> 拆解目标：${session.analysisGoal}`);
+  lines.push(`> 拆解对象：${inline(session.topic)}`);
+  if (session.productType) lines.push(`> 产品类型：${inline(session.productType)}`);
+  if (session.analysisGoal) lines.push(`> 拆解目标：${inline(session.analysisGoal)}`);
   lines.push("");
 
   lines.push("## 封面", "");
-  lines.push(`- 标题：${session.topic}`);
+  lines.push(`- 标题：${inline(session.topic)}`);
   lines.push(`- 副标题：${scenarioName(session.scenario)}`);
   lines.push(`- 日期：${fmtDate(session.createdAt)}`);
   lines.push("");
@@ -155,13 +175,21 @@ export function sessionToPptOutline(session: TrainingSession): string {
     lines.push("");
   }
 
-  /* 每一步一页。学员在对话里的回答已经包含在各页要点里，
-     这里只把该步的交付物作为「本页应回答的问题」列出来。 */
+  /* 每一步一页。分步场景里一轮对话就对应一步，所以按顺序把学员的
+     作答配到对应页面上，作为这一页的真实要点来源；
+     没有对应作答就不写这一行，而不是留一句「（从对话记录里提炼）」的占位符。 */
+  const answers = session.transcript
+    .filter((entry) => entry.role === "user")
+    .map((entry) => entry.content);
+
   steps.forEach((s, index) => {
     lines.push(`## 第 ${index + 2} 页：${s.name}`, "");
     lines.push(`- 本页要回答：${s.deliverable}`);
     lines.push(`- 信息来源：${s.whereToGet}`);
-    lines.push("- 要点：（从对话记录里提炼 2-3 条）");
+    const answer = answers[index];
+    if (answer) {
+      lines.push(`- 我的答案：${clip(inline(answer), 240)}`);
+    }
     lines.push("");
   });
 

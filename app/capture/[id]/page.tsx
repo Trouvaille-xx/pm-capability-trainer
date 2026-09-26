@@ -168,6 +168,15 @@ export default function CaptureDetailPage() {
         </div>
 
         <div className="detail-actions">
+          {/* 这条记录最自然的下一步：直接拿它当素材开一次训练 */}
+          <Link
+            href={`/trainer/new?capture=${capture.id}`}
+            className="btn btn-sm btn-primary"
+            title="把这条记录作为输入素材，开始一次训练"
+          >
+            <IconSpark width={13} height={13} />
+            用它训练
+          </Link>
           <Link
             href={`/capture?edit=${capture.id}`}
             className="btn btn-sm"

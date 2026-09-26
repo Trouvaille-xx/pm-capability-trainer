@@ -227,6 +227,48 @@ export const DOMAINS = [
   "增长与运营",
 ] as const;
 
+/**
+ * 历史数据里出现过的领域别名 → 规范名。
+ *
+ * 领域以前是纯自由字符串，所以老数据里可能是「数据分析」「增长运营」
+ * 这类写法。收敛一下，筛选和分组才可靠。
+ */
+const DOMAIN_ALIASES: Record<string, (typeof DOMAINS)[number]> = {
+  数据分析: "数据与分析",
+  数据: "数据与分析",
+  增长运营: "增长与运营",
+  增长: "增长与运营",
+  运营: "增长与运营",
+  商业战略: "商业与战略",
+  战略: "商业与战略",
+  用户调研: "用户研究",
+  调研: "用户研究",
+  产品: "产品设计",
+  心理学与行为: "心理学",
+};
+
+export function isKnownDomain(value: string): boolean {
+  return (DOMAINS as readonly string[]).includes(value);
+}
+
+/**
+ * 收敛单个领域名：已知的规范化、别名的映射过来、认不出的**原样保留**
+ * （宁可留着一个陌生领域，也不要悄悄丢掉用户填的东西）。
+ */
+export function normalizeDomain(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === "") return "";
+  if (isKnownDomain(trimmed)) return trimmed;
+  return DOMAIN_ALIASES[trimmed] ?? trimmed;
+}
+
+/** 批量收敛并去重。 */
+export function normalizeDomains(values: string[]): string[] {
+  return Array.from(
+    new Set(values.map(normalizeDomain).filter((value) => value !== "")),
+  );
+}
+
 export const CAPTURE_KINDS: { id: CaptureKind; name: string; blurb: string }[] = [
   { id: "book", name: "图书", blurb: "读完一本书记下的总结与思考" },
   { id: "article", name: "文章", blurb: "文章、报告、长文的结构化记录" },

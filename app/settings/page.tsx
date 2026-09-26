@@ -19,8 +19,8 @@ import {
 import { ConfirmDialog } from "@/components/Modal";
 import { PROVIDER_LABELS } from "@/lib/websearch";
 import type {
-  AISettings,
-  MCPServer,
+  PublicAISettings,
+  PublicMCPServer,
   PromptTemplate,
   WebSearchProvider,
 } from "@/lib/types";
@@ -93,10 +93,15 @@ const SECTIONS: {
 export default function SettingsPage() {
   const [section, setSection] = useState<SectionId>("ai");
 
-  const [settings, setSettings] = useState<AISettings | null>(null);
+  const [settings, setSettings] = useState<PublicAISettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [revealKey, setRevealKey] = useState(false);
+  /**
+   * 密钥草稿。服务端不再回传明文密钥，所以输入框平时是空的、只显示占位提示。
+   * 约定：**没有这个 key = 不改动原值**；值为空串 = 清除（只有「清除」按钮会这样写）。
+   * 这样「用户把输入框删空」只会退回「不改动」，不会误清密钥。
+   */
+  const [secretDrafts, setSecretDrafts] = useState<Record<string, string>>({});
   const [aiMessage, setAiMessage] = useState<{ tone: string; text: string } | null>(
     null,
   );
@@ -115,7 +120,7 @@ export default function SettingsPage() {
   const load = useCallback(async () => {
     try {
       const [ai, list] = await Promise.all([
-        apiGet<AISettings>("/api/settings"),
+        apiGet<PublicAISettings>("/api/settings"),
         apiGet<PromptTemplate[]>("/api/prompts"),
       ]);
       setSettings(ai);
@@ -161,6 +166,22 @@ export default function SettingsPage() {
       .filter((g) => g.items.length > 0);
   }, [prompts]);
 
+  /* ---- 密钥草稿：只在用户真的动过输入框时才存在 ---- */
+
+  function setSecretDraft(key: string, value: string) {
+    setSecretDrafts((prev) => {
+      const next = { ...prev };
+      // 删空输入框 = 放弃修改，而不是「清除密钥」
+      if (value === "") delete next[key];
+      else next[key] = value;
+      return next;
+    });
+  }
+
+  function clearSecretDraft(key: string) {
+    setSecretDrafts((prev) => ({ ...prev, [key]: "" }));
+  }
+
   /* ---- MCP 服务器的增删改（都只改本地状态，点保存才落盘）---- */
 
   function addServer() {
@@ -174,8 +195,8 @@ export default function SettingsPage() {
                 id: `mcp_${Math.random().toString(36).slice(2, 9)}`,
                 name: "",
                 url: "",
-                token: "",
                 enabled: true,
+                hasToken: false,
               },
             ],
           }
@@ -183,7 +204,7 @@ export default function SettingsPage() {
     );
   }
 
-  function updateServer(id: string, patch: Partial<MCPServer>) {
+  function updateServer(id: string, patch: Partial<PublicMCPServer>) {
     setSettings((prev) =>
       prev
         ? {
@@ -202,6 +223,11 @@ export default function SettingsPage() {
         ? { ...prev, mcpServers: prev.mcpServers.filter((s) => s.id !== id) }
         : prev,
     );
+    setSecretDrafts((prev) => {
+      const next = { ...prev };
+      delete next[`mcp:${id}`];
+      return next;
+    });
   }
 
   async function saveSettings() {
@@ -209,8 +235,30 @@ export default function SettingsPage() {
     setSaving(true);
     setAiMessage(null);
     try {
-      const next = await apiSend<AISettings>("/api/settings", "PUT", settings);
-      setSettings({ ...next, apiKey: settings.apiKey });
+      const keyDraft = secretDrafts.apiKey;
+      const searchDraft = secretDrafts.webSearch;
+
+      /* 只把「用户真的改过的密钥」放进请求体：没出现的字段服务端会保留原值。 */
+      const payload = {
+        ...settings,
+        ...(keyDraft !== undefined ? { apiKey: keyDraft } : {}),
+        webSearch: {
+          ...settings.webSearch,
+          ...(searchDraft !== undefined ? { apiKey: searchDraft } : {}),
+        },
+        mcpServers: settings.mcpServers.map((server) => {
+          const draft = secretDrafts[`mcp:${server.id}`];
+          return draft !== undefined ? { ...server, token: draft } : server;
+        }),
+      };
+
+      const next = await apiSend<PublicAISettings>(
+        "/api/settings",
+        "PUT",
+        payload,
+      );
+      setSettings(next);
+      setSecretDrafts({});
       setAiMessage({ tone: "notice-good", text: "已保存。" });
     } catch (e) {
       setAiMessage({
@@ -420,29 +468,39 @@ export default function SettingsPage() {
                     <div className="settings-row">
                       <div className="settings-row-label">
                         API Key
-                        <small>仅存本机</small>
+                        <small>仅存本机，不回显</small>
                       </div>
                       <div className="settings-row-body">
                         <div className="row" style={{ gap: 8 }}>
                           <input
                             className="input mono"
                             style={{ flex: 1, minWidth: 200 }}
-                            type={revealKey ? "text" : "password"}
-                            value={settings.apiKey}
+                            type="password"
+                            value={secretDrafts.apiKey ?? ""}
                             onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                apiKey: e.target.value,
-                              })
+                              setSecretDraft("apiKey", e.target.value)
                             }
-                            placeholder="sk-…"
+                            placeholder={
+                              settings.apiKeySet ? "已配置 · 留空表示不修改" : "sk-…"
+                            }
                           />
-                          <button
-                            className="btn btn-sm"
-                            onClick={() => setRevealKey((v) => !v)}
-                          >
-                            {revealKey ? "隐藏" : "显示"}
-                          </button>
+                          {settings.apiKeySet &&
+                          secretDrafts.apiKey === undefined ? (
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => clearSecretDraft("apiKey")}
+                            >
+                              清除
+                            </button>
+                          ) : null}
+                          {secretDrafts.apiKey === "" ? (
+                            <span className="tag tag-bad">保存后将清除</span>
+                          ) : null}
+                        </div>
+                        <div className="hint">
+                          {settings.apiKeySet
+                            ? "密钥已保存在本机，出于安全不再回显。不填写则保持不变。"
+                            : "尚未配置密钥。填入后点「保存配置」。"}
                         </div>
                       </div>
                     </div>
@@ -632,21 +690,34 @@ export default function SettingsPage() {
                       <div className="settings-row">
                         <div className="settings-row-label">搜索 API Key</div>
                         <div className="settings-row-body">
-                          <input
-                            className="input"
-                            type="password"
-                            value={settings.webSearch.apiKey}
-                            onChange={(e) =>
-                              setSettings({
-                                ...settings,
-                                webSearch: {
-                                  ...settings.webSearch,
-                                  apiKey: e.target.value,
-                                },
-                              })
-                            }
-                            placeholder="只保存在本机"
-                          />
+                          <div className="row" style={{ gap: 8 }}>
+                            <input
+                              className="input"
+                              style={{ flex: 1, minWidth: 200 }}
+                              type="password"
+                              value={secretDrafts.webSearch ?? ""}
+                              onChange={(e) =>
+                                setSecretDraft("webSearch", e.target.value)
+                              }
+                              placeholder={
+                                settings.webSearch.hasKey
+                                  ? "已配置 · 留空表示不修改"
+                                  : "只保存在本机"
+                              }
+                            />
+                            {settings.webSearch.hasKey &&
+                            secretDrafts.webSearch === undefined ? (
+                              <button
+                                className="btn btn-sm"
+                                onClick={() => clearSecretDraft("webSearch")}
+                              >
+                                清除
+                              </button>
+                            ) : null}
+                            {secretDrafts.webSearch === "" ? (
+                              <span className="tag tag-bad">保存后将清除</span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     ) : null}
@@ -746,17 +817,39 @@ export default function SettingsPage() {
                               }
                               placeholder="MCP 端点，例如 https://mcp.example.com/mcp"
                             />
-                            <input
-                              className="input"
-                              type="password"
-                              value={server.token}
-                              onChange={(e) =>
-                                updateServer(server.id, {
-                                  token: e.target.value,
-                                })
-                              }
-                              placeholder="访问令牌（可选，作为 Bearer 发送）"
-                            />
+                            <div className="row" style={{ gap: 8 }}>
+                              <input
+                                className="input"
+                                style={{ flex: 1 }}
+                                type="password"
+                                value={secretDrafts[`mcp:${server.id}`] ?? ""}
+                                onChange={(e) =>
+                                  setSecretDraft(
+                                    `mcp:${server.id}`,
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder={
+                                  server.hasToken
+                                    ? "访问令牌已配置 · 留空表示不修改"
+                                    : "访问令牌（可选，作为 Bearer 发送）"
+                                }
+                              />
+                              {server.hasToken &&
+                              secretDrafts[`mcp:${server.id}`] === undefined ? (
+                                <button
+                                  className="btn btn-sm"
+                                  onClick={() =>
+                                    clearSecretDraft(`mcp:${server.id}`)
+                                  }
+                                >
+                                  清除
+                                </button>
+                              ) : null}
+                              {secretDrafts[`mcp:${server.id}`] === "" ? (
+                                <span className="tag tag-bad">保存后将清除</span>
+                              ) : null}
+                            </div>
                           </div>
                         ))}
                       </div>

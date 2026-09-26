@@ -13,6 +13,19 @@
 | **AI 训练师** | 3 个训练场景 × 4 种训练模式，支持联网检索与 MCP 工具，每次训练结束产出评估报告 |
 | **设置** | AI 配置（任意 OpenAI 兼容端点）、联网与 MCP、提示词管理（场景块 / 模式块都可单独调） |
 
+## 四个模块是串起来的
+
+「输入 → 沉淀 → 训练 → 反馈」不是四句口号，而是四条真实的连线：
+
+- **记录 → 训练**：记录详情页的「用它训练」把这条记录带去向导并预填题目；
+  训练时它的总结、要点与你的思考会作为「本次输入素材」注入提示词。
+- **方法论 → 训练**：向导第 3 步可以挑本次要用的卡片（默认按场景推荐），
+  选中的卡片会作为「可用方法论」注入提示词，AI 的引导与质询会落到这些框架上。
+- **报告 → 能力画像**：报告的分项评分已按场景评分表对齐，跨会话聚合即得各维度的
+  平均得分率与走势（概览页的「能力画像」）。50 分制与百分制会先归一再比较。
+- **画像 → 下一次训练**：概览页的「下一步练什么」把最弱维度映射回场景与模式，
+  给出可点开的训练；报告页的「按此训练」则带着题目与血缘再开一轮。
+
 ## 快速开始
 
 ```bash
@@ -29,10 +42,11 @@ npm run dev
 npm run build      # 生产构建（含 TypeScript 校验）
 npm run start      # 跑生产版本
 npm run typecheck  # 只做类型检查
+npm test           # 单元测试（Vitest）
 ```
 
 技术栈：Next.js 16（App Router / Turbopack）、React 19、TypeScript，样式是手写的 CSS 设计系统，
-没有引入 UI 组件库。
+没有引入 UI 组件库；单元测试用 Vitest。
 
 ## AI 配置
 
@@ -40,6 +54,10 @@ npm run typecheck  # 只做类型检查
 设置页提供了几个预设：OpenAI、OpenCode Zen Go、DeepSeek 官方、本地 Ollama。
 
 API Key 只保存在本机 `data/settings.json`，该目录已加入 `.gitignore`，不会被提交。
+
+> **密钥不回显**：接口只回传「配没配」（`apiKeySet` / `hasKey` / `hasToken` 这些布尔量），
+> 不会把明文密钥送到浏览器。输入框留空表示不修改，想清空要点「清除」按钮——
+> 直接删空输入框只会当作「不改动」，避免手滑清掉密钥。
 
 > **关于 OpenCode Zen / Go 网关**：该网关要求每次请求带会话标识头，缺失会直接返回
 > `400 MissingSessionID`。平台已自动为每个训练会话发送 `x-opencode-session`，
@@ -119,6 +137,7 @@ API Key 只保存在本机 `data/settings.json`，该目录已加入 `.gitignore
 对话里会留下工具调用痕迹（查了什么、拿到几条、是否失败）。
 如果端点不支持 `tools` 参数（不少网关会直接返回 400），平台会自动降级为
 「先检索一次、把结果注入系统提示词」，训练不会中断。
+MCP 服务器连不上时也会在对话里说明原因，而不是只写进终端日志。
 
 ## 数据与备份
 
@@ -143,13 +162,14 @@ data/
 ```
 app/
 ├── layout.tsx                 # 全局布局与侧边导航
-├── page.tsx                   # 概览
+├── page.tsx                   # 概览（含能力画像与下一步建议）
+├── error.tsx / global-error.tsx / not-found.tsx / loading.tsx
 ├── globals.css                # 设计系统（全部样式）
 ├── capture/                   # 记录总结（列表 + 详情）
 ├── methodology/               # 方法论（列表 + 详情）
 ├── trainer/                   # AI 训练师
-│   ├── page.tsx               #   训练历史
-│   ├── new/                   #   新建训练（三步向导）
+│   ├── page.tsx               #   训练历史（可搜索题目 / 摘要 / 标签）
+│   ├── new/                   #   新建训练（三步向导，支持 ?capture= 预填）
 │   └── [id]/                  #   会话页 + report/ 报告页
 ├── settings/                  # 设置
 └── api/                       # 全部接口（13 个路由）
@@ -157,18 +177,22 @@ app/
     └── sessions/[id]/message | submit | report
 src/
 ├── lib/
-│   ├── types.ts       # 领域模型
+│   ├── types.ts       # 领域模型（含对外安全的设置投影类型）
 │   ├── catalog.ts     # 场景 / 模式 / 领域 / 拆解步骤与评分表
-│   ├── store.ts       # JSON 文件存储（原子写 + 串行化）
+│   ├── store.ts       # JSON 文件存储（原子写 + 串行化 + 锁内读改写）
+│   ├── settings.ts    # 设置投影：保证密钥不出服务端
 │   ├── seed.ts        # 内置提示词与方法论起步卡片
-│   ├── ai.ts          # OpenAI 兼容客户端（流式 + 工具调用）
-│   ├── agent.ts       # 工具调用循环与降级
-│   ├── mcp.ts         # MCP Streamable HTTP 客户端
+│   ├── ai.ts          # OpenAI 兼容客户端（流式 + 工具调用 + 超时/取消）
+│   ├── agent.ts       # 工具调用循环、参数收敛与降级
+│   ├── mcp.ts         # MCP Streamable HTTP 客户端（会话复用）
 │   ├── websearch.ts   # 联网搜索（5 个来源）
-│   ├── prompts.ts     # 提示词拼装
+│   ├── prompts.ts     # 提示词拼装（含素材与方法论注入）
 │   ├── report.ts      # 报告生成与规整
+│   ├── profile.ts     # 跨会话能力画像（派生式计算）
+│   ├── review.ts      # 薄弱维度 → 下一次训练推荐
 │   └── export.ts      # 导出 Markdown / PPT 大纲
 └── components/        # Nav、Modal、Markdown、ReportView、icons
+tests/                 # Vitest 单元测试
 ```
 
 ## 已知限制
@@ -176,3 +200,5 @@ src/
 - 未配置 AI 端点时无法开始训练，平台不内置任何密钥。
 - MCP 客户端目前只支持 Streamable HTTP，不支持 stdio 传输。
 - Bing 的搜索结果是解析结果页得到的，Bing 改版可能导致失效，届时可换用 Tavily / Serper。
+- 能力画像按维度名聚合，所以不同场景的维度是分开看的，不会互相平均。
+- 卡片的间隔重复（「该复习了」提醒）还没做；目前只做了「薄弱维度 → 推荐训练」这一条回环。

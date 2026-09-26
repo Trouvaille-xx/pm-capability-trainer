@@ -49,9 +49,16 @@ export default function ReportPage() {
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState(false);
 
+  /* 报告标签：本地先改、再整体写回，失败就回滚 */
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagDraft, setTagDraft] = useState("");
+  const [savingTags, setSavingTags] = useState(false);
+
   const load = useCallback(async () => {
     try {
-      setSession(await apiGet<TrainingSession>(`/api/sessions/${id}`));
+      const data = await apiGet<TrainingSession>(`/api/sessions/${id}`);
+      setSession(data);
+      setTags(data.report?.tags ?? []);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -63,6 +70,28 @@ export default function ReportPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function saveTags(next: string[]) {
+    const previous = tags;
+    setTags(next);
+    setTagDraft("");
+    setSavingTags(true);
+    try {
+      await apiSend(`/api/sessions/${id}`, "PATCH", { tags: next });
+      await load();
+    } catch (e) {
+      setTags(previous); // 写失败就回到改之前的样子
+      setError(e instanceof Error ? e.message : "保存标签失败");
+    } finally {
+      setSavingTags(false);
+    }
+  }
+
+  async function addTag() {
+    const tag = tagDraft.trim().slice(0, 20);
+    if (tag === "" || tags.includes(tag) || tags.length >= 12) return;
+    await saveTags([...tags, tag]);
+  }
 
   async function regenerate() {
     setGenerating(true);
@@ -183,9 +212,60 @@ export default function ReportPage() {
 
       {error ? <div className="notice notice-error">{error}</div> : null}
 
+      {session.report ? (
+        <div className="card card-tight">
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <span className="stat-label" style={{ alignSelf: "center" }}>
+              报告标签
+            </span>
+            {tags.map((tag) => (
+              <span key={tag} className="tag tag-brand">
+                {tag}
+                <button
+                  className="btn btn-sm btn-ghost"
+                  style={{ padding: "0 4px", marginLeft: 4 }}
+                  onClick={() => void saveTags(tags.filter((t) => t !== tag))}
+                  title="移除这个标签"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <input
+              className="input"
+              style={{ maxWidth: 180 }}
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void addTag();
+                }
+              }}
+              placeholder="输入标签后回车"
+            />
+            <button
+              className="btn btn-sm"
+              onClick={() => void addTag()}
+              disabled={savingTags || tagDraft.trim() === ""}
+            >
+              添加
+            </button>
+          </div>
+          <div className="hint">
+            打上标签后可以在训练列表里按关键词搜到这份报告。
+          </div>
+        </div>
+      ) : null}
+
       <div className="folder-pane">
         {session.report ? (
-          <ReportView report={session.report} topic={session.topic} />
+          <ReportView
+            report={session.report}
+            topic={session.topic}
+            sessionId={session.id}
+            scenario={session.scenario}
+          />
         ) : (
           <div className="empty">
             还没有报告。回到对话继续作答，或点右上「生成报告」让 AI 现在评估。

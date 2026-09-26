@@ -1,8 +1,12 @@
-import { handle, ok, optionalString, readBody, stringArray } from "@/lib/api";
+import { assertSameOrigin, handle, ok, optionalString, readBody, stringArray, uniqueStringArray } from "@/lib/api";
+import { normalizeDomains } from "@/lib/catalog";
 import { findById, patch, remove } from "@/lib/store";
-import type { Capture } from "@/lib/types";
+import type { Capture, CaptureKind } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+const KINDS: CaptureKind[] = ["book", "article", "note"];
+const STATUSES: Capture["status"][] = ["inbox", "doing", "done"];
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -17,6 +21,7 @@ export async function GET(_request: Request, { params }: Params) {
 
 export async function PATCH(request: Request, { params }: Params) {
   return handle(async () => {
+    assertSameOrigin(request);
     const { id } = await params;
     const body = await readBody<Capture>(request);
 
@@ -26,11 +31,16 @@ export async function PATCH(request: Request, { params }: Params) {
     if (body.source !== undefined) changes.source = optionalString(body.source, 500);
     if (body.summary !== undefined) changes.summary = optionalString(body.summary);
     if (body.thoughts !== undefined) changes.thoughts = optionalString(body.thoughts);
-    if (body.tags !== undefined) changes.tags = stringArray(body.tags);
-    if (body.domains !== undefined) changes.domains = stringArray(body.domains, 12);
+    if (body.tags !== undefined) changes.tags = uniqueStringArray(body.tags);
+    if (body.domains !== undefined) {
+      changes.domains = normalizeDomains(stringArray(body.domains, 12));
+    }
     if (body.keyPoints !== undefined) changes.keyPoints = stringArray(body.keyPoints, 30);
-    if (body.kind !== undefined) changes.kind = body.kind;
-    if (body.status !== undefined) changes.status = body.status;
+    /* 枚举字段按白名单写入，别让 PATCH 成为绕过 POST 校验的后门 */
+    if (KINDS.includes(body.kind as CaptureKind)) changes.kind = body.kind;
+    if (STATUSES.includes(body.status as Capture["status"])) {
+      changes.status = body.status;
+    }
     if (typeof body.rating === "number") {
       changes.rating = Math.max(0, Math.min(5, Math.round(body.rating)));
     }
@@ -41,8 +51,9 @@ export async function PATCH(request: Request, { params }: Params) {
   });
 }
 
-export async function DELETE(_request: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: Params) {
   return handle(async () => {
+    assertSameOrigin(request);
     const { id } = await params;
     const deleted = await remove("captures", id);
     if (!deleted) return ok({ error: "记录不存在" }, 404);

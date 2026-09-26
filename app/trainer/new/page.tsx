@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { MODES, SCENARIOS } from "@/lib/catalog";
 import { apiGet, apiSend } from "@/lib/client";
@@ -17,7 +17,9 @@ import {
   IconUser,
 } from "@/components/icons";
 import type {
-  AISettings,
+  Capture,
+  MethodologyCard,
+  PublicAISettings,
   TrainingMode,
   TrainingScenario,
   TrainingSession,
@@ -71,23 +73,87 @@ function NewTrainingInner() {
   const [productType, setProductType] = useState("C端");
   const [analysisGoal, setAnalysisGoal] = useState("");
 
+  /* 与「记录总结」「方法论」的联动 */
+  const [capture, setCapture] = useState<Capture | null>(null);
+  const [cards, setCards] = useState<MethodologyCard[]>([]);
+  const [cardIds, setCardIds] = useState<string[]>([]);
+  /** 用户手动改过卡片选择之后，就不再自动预选 */
+  const [cardsTouched, setCardsTouched] = useState(false);
+  const retryOf = searchParams.get("retryOf") ?? "";
+
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [aiReady, setAiReady] = useState<boolean | null>(null);
 
-  // 概览页可以带 ?scenario=xxx 直接预选
+  // 概览页 / 报告页可以带 ?scenario= ?mode= ?topic= 直接预选
   useEffect(() => {
     const preset = searchParams.get("scenario");
     if (preset && SCENARIOS.some((s) => s.id === preset)) {
       setScenario(preset as TrainingScenario);
     }
+    const presetMode = searchParams.get("mode");
+    if (presetMode && MODES.some((m) => m.id === presetMode)) {
+      setMode(presetMode as TrainingMode);
+    }
+    const presetTopic = searchParams.get("topic");
+    if (presetTopic) setTopic(presetTopic.slice(0, 500));
   }, [searchParams]);
+
+  /* ?capture=<id>：从一条记录总结直接开一次训练。
+     题目用记录标题预填，并把这条记录作为本次训练的输入素材。 */
+  useEffect(() => {
+    const captureId = searchParams.get("capture");
+    if (!captureId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const found = await apiGet<Capture>(`/api/captures/${captureId}`);
+        if (!alive) return;
+        setCapture(found);
+        setTopic((prev) => (prev === "" ? found.title.slice(0, 500) : prev));
+      } catch {
+        // 记录可能已被删除：静默忽略，用户仍然可以手写题目
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [searchParams]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const list = await apiGet<MethodologyCard[]>("/api/methodology");
+        if (alive) setCards(list);
+      } catch {
+        // 方法论拉不到不影响训练，只是少了个推荐块
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /* 当前场景适合用的卡片：scenarios 为空的卡片视为通用 */
+  const suggestedCards = useMemo(() => {
+    const matched = cards.filter(
+      (card) => card.scenarios.length === 0 || card.scenarios.includes(scenario),
+    );
+    return matched.slice(0, 8);
+  }, [cards, scenario]);
+
+  /* 没手动选过就自动带上本场景推荐的卡片 */
+  useEffect(() => {
+    if (cardsTouched) return;
+    setCardIds(suggestedCards.map((card) => card.id));
+  }, [suggestedCards, cardsTouched]);
 
   useEffect(() => {
     (async () => {
       try {
-        const settings = await apiGet<AISettings>("/api/settings");
-        setAiReady(settings.apiKey.trim() !== "");
+        const settings = await apiGet<PublicAISettings>("/api/settings");
+        setAiReady(settings.apiKeySet);
       } catch {
         setAiReady(true); // 拿不到配置就不拦人，交给训练时再报错
       }
@@ -112,6 +178,9 @@ function NewTrainingInner() {
         mode,
         topic,
         ...(isTeardown ? { productType, analysisGoal } : {}),
+        ...(capture ? { captureId: capture.id } : {}),
+        ...(cardIds.length > 0 ? { methodologyCardIds: cardIds } : {}),
+        ...(retryOf !== "" ? { retryOf } : {}),
       });
       // 实时对话模式进去后立刻让 AI 开场
       const auto = MODES.find((m) => m.id === mode)?.live ? "?kickoff=1" : "";
@@ -281,6 +350,77 @@ function NewTrainingInner() {
                 autoFocus
               />
             </div>
+
+            {/* 关联的记录总结：这次训练就基于它展开 */}
+            {capture ? (
+              <div className="field">
+                <label>输入素材</label>
+                <div className="card card-tight">
+                  <div className="row" style={{ marginBottom: 4 }}>
+                    <div className="list-title" style={{ flex: 1 }}>
+                      {capture.title}
+                    </div>
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => setCapture(null)}
+                    >
+                      取消关联
+                    </button>
+                  </div>
+                  <div className="list-sub clamp-2">
+                    {capture.summary || capture.thoughts || "（这条记录没有摘要）"}
+                  </div>
+                </div>
+                <div className="hint">
+                  训练时会把这条记录的总结、要点与你的思考一并交给 AI 作为依据。
+                </div>
+              </div>
+            ) : null}
+
+            {/* 方法论卡片：让卡片真的参与训练，而不是只躺在库里 */}
+            {suggestedCards.length > 0 ? (
+              <div className="field">
+                <div className="row" style={{ marginBottom: 6 }}>
+                  <label style={{ margin: 0, flex: 1 }}>
+                    本次可用的方法论（已选 {cardIds.length}）
+                  </label>
+                  {cardsTouched ? (
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => setCardsTouched(false)}
+                    >
+                      恢复推荐
+                    </button>
+                  ) : null}
+                </div>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  {suggestedCards.map((card) => {
+                    const on = cardIds.includes(card.id);
+                    return (
+                      <button
+                        key={card.id}
+                        className={`tag${on ? " tag-brand" : ""}`}
+                        style={{ cursor: "pointer" }}
+                        title={card.oneLiner}
+                        onClick={() => {
+                          setCardsTouched(true);
+                          setCardIds((prev) =>
+                            prev.includes(card.id)
+                              ? prev.filter((id) => id !== card.id)
+                              : [...prev, card.id],
+                          );
+                        }}
+                      >
+                        {card.title}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="hint">
+                  选中的卡片会作为「可用方法论」注入提示词，AI 的引导与质询会落到这些框架上。
+                </div>
+              </div>
+            ) : null}
 
             {/* 产品拆解的提示词里要用到产品类型和拆解目标，在这里收集 */}
             {isTeardown ? (

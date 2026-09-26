@@ -1,15 +1,18 @@
 "use client";
 
+import Link from "next/link";
+
 import { scoreTone } from "@/lib/client";
 import {
   IconAlert,
+  IconArrowRight,
   IconCheck,
   IconReport,
   IconSpark,
   IconTarget,
   IconTrend,
 } from "@/components/icons";
-import type { TrainingReport } from "@/lib/types";
+import type { TrainingReport, TrainingScenario } from "@/lib/types";
 
 function ScoreBar({ score, max = 100 }: { score: number; max?: number }) {
   const ratio = max > 0 ? (score / max) * 100 : 0;
@@ -54,14 +57,26 @@ function Bullets({
 export function ReportView({
   report,
   topic,
+  sessionId,
+  scenario,
 }: {
   report: TrainingReport;
   topic: string;
+  /** 传了才有「用同一题目再练一次」的深链 */
+  sessionId?: string;
+  scenario?: TrainingScenario;
 }) {
   // 老报告可能没有 overallMax / grade，兜底成百分制
   const overallMax = report.overallMax && report.overallMax > 0 ? report.overallMax : 100;
   const ratio = (report.overall / overallMax) * 100;
   const tone = scoreTone(ratio);
+
+  const retryHref =
+    sessionId && scenario
+      ? `/trainer/new?scenario=${scenario}&topic=${encodeURIComponent(
+          topic,
+        )}&retryOf=${sessionId}`
+      : null;
 
   return (
     <div className="detail-body" style={{ maxWidth: 860 }}>
@@ -128,7 +143,52 @@ export function ReportView({
         tone="warn"
       />
       <Bullets title="具体建议" items={report.suggestions} Icon={IconSpark} />
-      <Bullets title="下一步练什么" items={report.nextSteps} Icon={IconTarget} />
+
+      {/* 下一步：不只写建议，还给一个能直接点开的训练入口——
+          否则「下一步练什么」永远停在纸面上。 */}
+      {report.nextSteps.length > 0 ? (
+        <section>
+          <div className="detail-section-head" style={{ color: "var(--warn)" }}>
+            <IconTarget width={15} height={15} />
+            <h2>下一步练什么</h2>
+          </div>
+          <div className="stack" style={{ gap: 8 }}>
+            {report.nextSteps.map((item, index) => (
+              <div key={index} className="card card-tight">
+                <div className="row" style={{ alignItems: "flex-start" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>{item}</div>
+                  {retryHref ? (
+                    <Link
+                      href={retryHref}
+                      className="btn btn-sm"
+                      title="用同一个题目、带着这次的血缘再练一次"
+                    >
+                      按此训练
+                      <IconArrowRight width={13} height={13} />
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {report.tags && report.tags.length > 0 ? (
+        <section>
+          <div className="detail-section-head">
+            <IconReport width={15} height={15} />
+            <h2>标签</h2>
+          </div>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {report.tags.map((tag) => (
+              <span key={tag} className="tag">
+                {tag}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

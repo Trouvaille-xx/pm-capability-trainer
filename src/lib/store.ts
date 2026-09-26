@@ -57,12 +57,23 @@ function collectionPath(name: CollectionName): string {
 }
 
 async function readJsonFile<T>(file: string, fallback: T): Promise<T> {
+  const value = await readJsonFileOrNull<T>(file);
+  return value === null ? fallback : value;
+}
+
+/**
+ * 读文件；文件不存在（ENOENT）或内容为空时返回 null。
+ *
+ * 与 readJsonFile 分开是为了让 readCollection 能区分「文件不存在」
+ * 与「文件存在但是空数组」——前者该播种，后者是用户自己的选择。
+ */
+async function readJsonFileOrNull<T>(file: string): Promise<T | null> {
   try {
     const raw = await fs.readFile(file, "utf8");
-    if (raw.trim() === "") return fallback;
+    if (raw.trim() === "") return null;
     return JSON.parse(raw) as T;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return fallback;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     if (error instanceof SyntaxError) {
       throw new Error(
         `数据文件 ${file} 不是合法 JSON，请修复或删除后重试：${error.message}`,
@@ -91,24 +102,27 @@ interface HasId {
 }
 
 /**
- * 读取一个集合。首次访问时会写入内置种子数据（提示词模板、方法论卡片），
- * 让平台一打开就有东西可用。
+ * 读取一个集合。
+ *
+ * 只在**文件还不存在**时才写入内置种子数据（提示词模板、方法论卡片），
+ * 让平台一打开就有东西可用。注意不是「读到空数组就播种」——那样用户
+ * 主动清空某个集合后，下次读取会被悄悄塞回内置内容，等于删不掉。
  */
 export async function readCollection<K extends CollectionName>(
   name: K,
 ): Promise<CollectionType<K>[]> {
   return withLock(name, async () => {
-    const items = await readJsonFile<CollectionType<K>[]>(
+    const existing = await readJsonFileOrNull<CollectionType<K>[]>(
       collectionPath(name),
-      [],
     );
-    if (items.length > 0) return items;
+    if (existing !== null) return existing;
+
     const seeded = seedFor(name);
     if (seeded.length > 0) {
       await writeJsonFile(collectionPath(name), seeded);
       return seeded as CollectionType<K>[];
     }
-    return items;
+    return [];
   });
 }
 
@@ -155,6 +169,37 @@ export async function patch<K extends CollectionName>(
     items[index] = updated;
     await writeJsonFile(collectionPath(name), items);
     return updated;
+  });
+}
+
+/**
+ * 按 id 做「锁内读改写」。
+ *
+ * patch 只适合无竞态的局部更新。凡是「先读出来看一眼、再决定写什么」的逻辑
+ * （例如往 transcript 追加一轮回答），都必须在同一把锁里完成，
+ * 否则两个并发请求会各自基于同一份旧快照写回，后写的把先写的覆盖掉。
+ *
+ * updater 返回 null 表示放弃写入（例如记录已不存在、或校验没通过）。
+ */
+export async function mutate<K extends CollectionName>(
+  name: K,
+  id: string,
+  updater: (current: CollectionType<K>) => CollectionType<K> | null,
+): Promise<CollectionType<K> | null> {
+  return withLock(name, async () => {
+    const items = await readJsonFile<CollectionType<K>[]>(
+      collectionPath(name),
+      [],
+    );
+    const index = items.findIndex((entry) => entry.id === id);
+    if (index < 0) return null;
+
+    const next = updater(items[index]);
+    if (next === null) return null;
+
+    items[index] = next;
+    await writeJsonFile(collectionPath(name), items);
+    return next;
   });
 }
 
@@ -205,13 +250,39 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   mcpServers: [],
 };
 
+/**
+ * 把落盘的（可能缺字段、可能是旧版本写的）设置补齐成完整形状。
+ *
+ * 逐层合并而不是 `{...defaults, ...stored}`：后者对嵌套对象是整体替换，
+ * 于是「新版本给 webSearch 加了字段」时，老用户的 settings.json 里没有那一层，
+ * 新字段就永远补不上。数组（mcpServers）整体替换才是对的，不做深合并。
+ */
+function normalizeSettings(stored: Partial<AISettings>): AISettings {
+  const servers = Array.isArray(stored.mcpServers) ? stored.mcpServers : [];
+  return {
+    ...DEFAULT_AI_SETTINGS,
+    ...stored,
+    webSearch: {
+      ...DEFAULT_AI_SETTINGS.webSearch,
+      ...(stored.webSearch ?? {}),
+    },
+    mcpServers: servers.map((server) => ({
+      id: String(server.id ?? ""),
+      name: String(server.name ?? ""),
+      url: String(server.url ?? ""),
+      token: String(server.token ?? ""),
+      enabled: server.enabled !== false,
+    })),
+  };
+}
+
 export async function readSettings(): Promise<AISettings> {
   return withLock("settings", async () => {
     const stored = await readJsonFile<Partial<AISettings>>(
       SETTINGS_FILE(),
       {},
     );
-    return { ...DEFAULT_AI_SETTINGS, ...stored };
+    return normalizeSettings(stored);
   });
 }
 
@@ -223,7 +294,7 @@ export async function writeSettings(
       SETTINGS_FILE(),
       {},
     );
-    const next: AISettings = { ...DEFAULT_AI_SETTINGS, ...stored, ...changes };
+    const next = normalizeSettings({ ...stored, ...changes });
     await writeJsonFile(SETTINGS_FILE(), next);
     return next;
   });

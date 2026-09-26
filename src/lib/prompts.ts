@@ -1,15 +1,17 @@
 /**
  * 提示词装配。
  *
- * 训练时的系统提示词 = 场景块 + 当前步骤块 + 模式块 + 通用约束。
+ * 训练时的系统提示词 = 场景块 + 当前步骤块 + 输入素材块 + 方法论块 + 模式块 + 通用约束。
  * 每个块都取自「设置 → 提示词管理」里的模板，用户可以逐块修改；
  * 某一块被停用时就不参与拼装。
  *
- * 另外负责两件事：
+ * 另外负责三件事：
  * 1. 变量替换 —— 模板里的 {company_name}、{product_name} 等占位符，
  *    在请求前替换成本次训练的真实值。
  * 2. 步骤与评分表注入 —— 有分步流程的场景（产品拆解）会注入
  *    「现在第几步、该交付什么」，报告生成时注入该场景的评分表。
+ * 3. 关联内容注入 —— 会话关联的记录总结进「输入素材块」，
+ *    选中的方法论卡片进「方法论块」，让三个模块真正串成一条链路。
  */
 
 import {
@@ -56,9 +58,15 @@ function applyVariables(text: string, vars: Record<string, string>): string {
   return out;
 }
 
-/** 今天日期，形如 2026-02-14。 */
+/** 今天日期，形如 2026-02-14。
+ *
+ * 刻意用本地时区而不是 UTC：`toISOString()` 是 UTC，
+ * 国内用户晚上 8 点之后会拿到「昨天」的日期。
+ */
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
 }
 
 /** 组装本次训练的模板变量。 */
@@ -109,6 +117,63 @@ const COMMON_RULES = `通用要求：
 - 不要替用户完成训练任务，你的职责是引导、质询或批改
 - 如果用户明显在敷衍或答非所问，直接指出`;
 
+/** 关联的记录总结 → 注入块。这是「读书 → 训练」真正接上的地方。 */
+async function captureBlock(session: TrainingSession): Promise<string> {
+  if (!session.captureId) return "";
+
+  const captures = await readCollection("captures");
+  const capture = captures.find((item) => item.id === session.captureId);
+  if (!capture) return "";
+
+  const lines = [
+    "【本次输入素材】",
+    `用户为这次训练准备了一份学习记录：《${capture.title}》${
+      capture.author ? `（${capture.author}）` : ""
+    }。`,
+  ];
+  if (capture.summary.trim() !== "") {
+    lines.push(`内容总结：${clip(capture.summary, 1200)}`);
+  }
+  if (capture.keyPoints.length > 0) {
+    lines.push(
+      "关键要点：",
+      ...capture.keyPoints.slice(0, 10).map((point) => `- ${clip(point, 300)}`),
+    );
+  }
+  if (capture.thoughts.trim() !== "") {
+    lines.push(`用户自己的思考：${clip(capture.thoughts, 1200)}`);
+  }
+  lines.push(
+    "以上是用户自己的学习成果，请把它当作本次训练的依据与素材：该引用时引用，发现它的盲区时也要指出来。",
+  );
+  return lines.join("\n");
+}
+
+/** 本次选中的方法论卡片 → 注入块，让 21 张卡片真的在训练里起作用。 */
+async function methodologyBlock(session: TrainingSession): Promise<string> {
+  const ids = session.methodologyCardIds ?? [];
+  if (ids.length === 0) return "";
+
+  const cards = await readCollection("methodology");
+  const chosen = ids
+    .map((id) => cards.find((card) => card.id === id))
+    .filter((card): card is NonNullable<typeof card> => Boolean(card));
+  if (chosen.length === 0) return "";
+
+  const lines = [
+    "【可用方法论】",
+    "以下是本次训练可调用的方法论卡片。引导、质询或批改时请尽量落到这些框架上，点名它们，而不是泛泛而谈：",
+  ];
+  for (const card of chosen) {
+    lines.push(
+      `- ${card.title}（${card.domain}）：${clip(card.oneLiner, 200)}${
+        card.howToUse.trim() !== "" ? `｜怎么用：${clip(card.howToUse, 300)}` : ""
+      }`,
+    );
+  }
+  return lines.join("\n");
+}
+
 /**
  * 拼出一次训练对话的系统提示词。
  *
@@ -139,6 +204,14 @@ export async function trainingSystemPrompt(
 
   const step = stepBlock(session);
   if (step) parts.push(step);
+
+  /* 把这条训练与「记录总结」「方法论」接上：
+     读过的书成为训练素材，选中的卡片成为可调用的框架。 */
+  const material = await captureBlock(session);
+  if (material) parts.push(material);
+
+  const methodology = await methodologyBlock(session);
+  if (methodology) parts.push(methodology);
 
   const modeBlock = map.get(session.mode);
   if (modeBlock) parts.push(applyVariables(modeBlock, vars));
@@ -190,22 +263,31 @@ export async function reportSystemPrompt(
 /**
  * 从模型的回答里解析出「第X步」，用于自动推进进度。
  *
- * 优先认【当前步骤】那一行的写法；认不到时退而求其次，
- * 取全文里出现过的最大步号（模型可能顺带提到后面的步骤）。
+ * 只认【当前步骤】那一行的写法——这是提示词里与模型约定好的契约
+ * （见 seed.ts：「【当前步骤】必须写成「第X步：步骤名」，系统靠它识别进度」）。
+ *
+ * 不再退而求其次去取全文里最大的「第N步」：模型在解释流程时顺带提一句
+ * 「最后是第 8 步」，进度就会被直接跳到末尾，比不推进更糟。
+ * 解析不到就返回 null，保持原进度不动。
  */
 export function parseStep(reply: string): number | null {
   const strict = reply.match(/【当前步骤】[^\n]*?第\s*(\d+)\s*步/);
-  if (strict) return Number(strict[1]);
+  return strict ? Number(strict[1]) : null;
+}
 
-  const all = [...reply.matchAll(/第\s*(\d+)\s*步/g)].map((m) => Number(m[1]));
-  if (all.length === 0) return null;
-  return Math.max(...all);
+/** 单条对话、整份记录、独立作答的字符上限，避免上下文被撑爆。 */
+const MAX_ENTRY_CHARS = 3000;
+const MAX_TRANSCRIPT_CHARS = 24000;
+const MAX_SUBMISSION_CHARS = 12000;
+
+function clip(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}…（已截断）`;
 }
 
 /** 把一次训练的记录整理成给报告模型看的纯文本。 */
 export function renderSessionForReport(session: TrainingSession): string {
   const scenarioMeta = SCENARIOS.find((s) => s.id === session.scenario);
-  const modeMeta = MODES.find((m) => m.id === session.mode);
+  const modeMeta = MODES.find((s) => s.id === session.mode);
   const steps = scenarioSteps(session.scenario);
 
   const lines: string[] = [
@@ -222,30 +304,61 @@ export function renderSessionForReport(session: TrainingSession): string {
   lines.push("");
 
   if (session.mode === "solo") {
-    lines.push("【学员独立完成的作答】", session.submission || "（未提交内容）");
+    lines.push(
+      "【学员独立完成的作答】",
+      clip(session.submission || "（未提交内容）", MAX_SUBMISSION_CHARS),
+    );
   } else {
     lines.push("【训练对话记录】");
     if (session.transcript.length === 0) {
       lines.push("（没有对话记录）");
-    }
-    for (const entry of session.transcript) {
-      lines.push(`${entry.role === "user" ? "学员" : "教练"}：${entry.content}`);
+    } else {
+      /* 每轮先各自截断，再按总量预算从最早的开始丢弃——
+         长会话不至于把提示词撑到超出模型上下文。 */
+      const rendered = session.transcript.map(
+        (entry) =>
+          `${entry.role === "user" ? "学员" : "教练"}：${clip(
+            entry.content,
+            MAX_ENTRY_CHARS,
+          )}`,
+      );
+
+      let total = rendered.reduce((sum, line) => sum + line.length, 0);
+      let start = 0;
+      while (start < rendered.length - 1 && total > MAX_TRANSCRIPT_CHARS) {
+        total -= rendered[start].length;
+        start += 1;
+      }
+      if (start > 0) {
+        lines.push(`（较早的 ${start} 轮对话已省略）`);
+      }
+      lines.push(...rendered.slice(start));
     }
   }
 
   return lines.join("\n");
 }
 
-/** 把会话压缩成模型上下文（限制轮数与长度，避免超长）。 */
+/** 把会话压缩成模型上下文（限制轮数与总字符数，避免超长）。 */
 export function toChatMessages(
   system: string,
   session: TrainingSession,
   maxTurns = 24,
 ): { role: "system" | "user" | "assistant"; content: string }[] {
   const recent = session.transcript.slice(-maxTurns);
+
+  /* 轮数限制之外再加一道字符预算：一轮很长的回答同样能把上下文撑爆。
+     超出就从最早的开始丢。 */
+  let start = 0;
+  let total = recent.reduce((sum, entry) => sum + entry.content.length, 0);
+  while (start < recent.length - 1 && total > MAX_TRANSCRIPT_CHARS) {
+    total -= recent[start].content.length;
+    start += 1;
+  }
+
   return [
     { role: "system", content: system },
-    ...recent.map((entry) => ({
+    ...recent.slice(start).map((entry) => ({
       role: entry.role,
       content: entry.content,
     })),
