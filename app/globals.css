@@ -4804,19 +4804,23 @@ button.tag.tag-brand:hover {
   color: var(--ink);
 }
 
-/* ---------------- 方案乙 · 主次式 ----------------
-   我的回答是主角占主栏（白纸大字），AI 回答退到侧栏（灰底小一号、吸顶）。
-   知识和阅读沉到最下方一排。
+/* ---------------- 一列排版 ----------------
+   两个回答上下排：我的回答在上（白纸大字），AI 回答沉在下方（灰底小一号）。
+   知识和阅读仍然沉在最下方一排。
 
-   为什么不让两个回答等宽并排：
-   这是「我练手的本子」，我的回答是我写的，AI 回答本质是参考资料。
-   做成一样大反而模糊了主次，而且两列各 ~590px 时长文读着累。 */
+   为什么不再并排：
+   两个回答的长度天然不对称 —— 我的通常一段，AI 的常带列表和代码块。
+   并排时底边必然参差（align-items: start 下这是必然，不是 bug），
+   而且侧栏只有 1fr 宽、字号还小一号，长文读着更累。
+   一列之后每块都拿到全宽，参差问题从根上消失，移动端也不必另做一套。
+
+   侧栏也不再吸顶：sticky 是为了「读主栏时还能看见侧栏」，
+   一列之后它只会让块浮起来，看着更散。 */
 
 .lead {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  gap: 34px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
 }
 
 .lead-main {
@@ -4830,9 +4834,14 @@ button.tag.tag-brand:hover {
   background: var(--paper-2);
   border: 1px solid var(--rule);
   padding: 24px 26px 28px;
-  position: sticky;
-  top: 20px;
   min-width: 0;
+}
+
+/* 卡片占满版心宽度（和题头对齐），但正文行长要收住——
+   版心 1180px 下一行能排八十多个汉字，读起来很累。 */
+.lead-main .q-body,
+.lead-side .q-body {
+  max-width: 42em;
 }
 
 .lead-foot {
@@ -4844,7 +4853,7 @@ button.tag.tag-brand:hover {
   border-top: 1px solid var(--rule);
 }
 
-/* 回答正文。两处共用，侧栏字号小一档。 */
+/* 回答正文。两个回答共用，AI 回答那条沿用旧的类名（.lead-side），字号小一档。 */
 .q-body {
   font-size: 14.5px;
   line-height: 1.95;
@@ -5150,13 +5159,10 @@ button.tag.tag-brand:hover {
 /* ---------------- 窄屏 ---------------- */
 
 @media (max-width: 1080px) {
-  .lead,
+  /* .lead 本身已经是一列（见上），这里只需要把下方的两栏也收成一列。
+     .lead-side 的 position: static 覆盖也一并去掉了——基础样式里已经没有 sticky。 */
   .lead-foot {
     grid-template-columns: 1fr;
-  }
-
-  .lead-side {
-    position: static;
   }
 
   .q-head h1 {
