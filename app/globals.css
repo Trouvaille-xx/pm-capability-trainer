@@ -4046,6 +4046,19 @@ button.tag.tag-brand:hover {
   padding: 6px 0 22px;
 }
 
+/* 展开体里的提示词正文框。
+   它是这一页真正要改的东西，而 .set-textarea 默认只有一条下划线，
+   边界太弱 —— 在灰底面板里给一个白底描边框，「要改的就这一块」就明确了。 */
+.set-tpl-body .set-textarea {
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  padding: 12px 14px;
+}
+
+.set-tpl-body .set-textarea:focus {
+  border-color: var(--ink);
+}
+
 
 /* ================================================================
    印刷品填表：只有下划线
@@ -4215,6 +4228,24 @@ button.tag.tag-brand:hover {
 
 .set-tpl-wrap .set-tpl {
   border-bottom: 0;
+}
+
+/* 展开时把这一条整体圈起来。
+   编辑器内部全是用下划线分隔的字段（.set-field / .set-textarea），
+   没有外围容器，于是「从哪开始、改到哪结束」看不出来 ——
+   和相邻模板的边界只剩一条 1px 细线。左侧一条朱砂竖线 + 淡底，
+   边界就立起来了；展开的那条向右缩进，收起 / 展开一眼可辨。
+   （:has() 在本项目已有先例，见 .section-label。） */
+.set-tpl-wrap:has(.set-tpl-body) {
+  background: var(--paper-2);
+  border-left: 2px solid var(--mark);
+  padding: 2px 18px 10px;
+  margin: 4px 0 8px;
+}
+
+.set-tpl-wrap:has(.set-tpl-body) .set-tpl-title {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 
