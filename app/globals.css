@@ -4773,8 +4773,23 @@ button.tag.tag-brand:hover {
 /* ---------------- 详情页外壳 ---------------- */
 
 .q-shell {
-  max-width: 1180px;
+  /* 一列阅读版心：左起 92px 是目录轨，其余是正文。
+     正文宽度 = 860 - 92 - 44 = 724px，约一行 45 个汉字。 */
+  max-width: 860px;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 0 44px;
+  align-items: start;
+}
+
+/* 四个内容块都走第二列；目录占第一列（见下） */
+.q-shell > .q-head,
+.q-shell > .q-actions,
+.q-shell > .lead,
+.q-shell > .lead-foot {
+  grid-column: 2;
+  min-width: 0;
 }
 
 /* 题头：题目优先级最高，独立成块占满宽 */
@@ -4837,52 +4852,35 @@ button.tag.tag-brand:hover {
   min-width: 0;
 }
 
-/* 卡片占满版心宽度（和题头对齐），但正文行长要收住——
-   版心 1180px 下一行能排八十多个汉字，读起来很累。 */
-.lead-main .q-body,
-.lead-side .q-body {
-  max-width: 42em;
-}
+/* 正文的行长由卡片宽度决定（见 .q-shell 的版心宽度），这里不再单独限宽——
+   上一版把正文收在 42em、卡片却占满 1180px，右侧留出一大块「框内空白」，
+   带边框的空白读起来像坏了。 */
 
-/* ---------------- 悬空目录 ----------------
-   贴左侧沟槽的一条刻度轨：默认只有刻度，悬停（或键盘聚焦）才展开文字。
+/* ---------------- 目录 ----------------
+   贴着正文左缘的一条窄轨，宽 92px，随页面滚动停在视口里。
 
-   为什么用 fixed 覆盖层，而不是布局里的一列：
-   这一页刚从两栏改成一列，正是为了消掉「并排参差」；再加一列等于把它带回来。
-   覆盖层不占宽度，也不挤压阅读栏。
+   为什么是 sticky 窄轨，而不是 fixed 覆盖层：
+   覆盖层要贴住正文就得拿视口宽度做数学（侧栏宽、内容内边距、版心居中量），
+   屏宽一变或侧栏一展开就会错位；交给 grid 定位则是自动贴住的。
+   窄轨只是一列刻度，不是「内容块」，所以不会重新引入并排参差的问题。
 
-   左侧只有 40px 沟槽（内容区的 padding-left），所以收起时必须真的小：
-   12px 刻度刚好落在正文左边缘之外；展开的标签会压在正文上，
-   所以悬停时垫一层底色把它压住，否则读不清。
-
-   侧栏展开时跟着内容一起平移（内容区是靠 body.rail-open 让位的），
-   而不是把它藏起来——目录在侧栏展开时同样有用。 */
+   标签常显——92px 足够放下四个字，不必悬停才展开。 */
 
 .qtoc {
-  position: fixed;
-  left: calc(var(--sidebar-w) + 10px);
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 40; /* 低于侧栏的 50 */
+  grid-column: 1;
+  grid-row: 1 / span 4; /* .q-shell 的 4 个直接子元素，目录纵跨整页 */
+  position: sticky;
+  top: 40px;
+  align-self: start;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
-  transition:
-    opacity 0.2s var(--ease),
-    left var(--rail-dur) var(--spring);
-}
-
-body.rail-open .qtoc {
-  left: calc(var(--sidebar-w-open) + 10px);
 }
 
 .qtoc-label {
   font-size: 10px;
   color: var(--ink-4);
   margin-bottom: 8px;
-  opacity: 0;
-  transition: opacity 0.2s var(--ease);
 }
 
 .qtoc a {
@@ -4906,22 +4904,6 @@ body.rail-open .qtoc {
 .qtoc-name {
   font-size: 12px;
   white-space: nowrap;
-  opacity: 0;
-  transition: opacity 0.2s var(--ease);
-}
-
-/* 展开：悬停或键盘进入时显示文字，并垫一层底色压住下面的正文 */
-.qtoc:hover,
-.qtoc:focus-within {
-  background: var(--board);
-  box-shadow: 0 0 0 10px var(--board);
-}
-
-.qtoc:hover .qtoc-label,
-.qtoc:hover .qtoc-name,
-.qtoc:focus-within .qtoc-label,
-.qtoc:focus-within .qtoc-name {
-  opacity: 1;
 }
 
 .qtoc a:hover {
@@ -4944,8 +4926,13 @@ body.rail-open .qtoc {
   scroll-margin-top: 24px;
 }
 
-/* 沟槽不够宽就不显示 */
-@media (max-width: 900px) {
+/* 版心放不下目录那一列时收成单列，并藏掉目录 */
+@media (max-width: 1040px) {
+  .q-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
   .qtoc {
     display: none;
   }

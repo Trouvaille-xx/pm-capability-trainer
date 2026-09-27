@@ -410,29 +410,29 @@ export default function QuestionDetailPage() {
 
   return (
     <div className="stack">
-      {/* 悬空目录：默认只有刻度，悬停才展开文字。
-          做成 fixed 覆盖层而不是布局里的一列 —— 重新加一列会把
-          刚去掉的「并排参差」问题带回来；覆盖层不占宽度。 */}
-      <nav className="qtoc" aria-label="页面目录">
-        <span className="qtoc-label">目录</span>
-        {visibleSections.map((section) => (
-          <a
-            key={section.id}
-            href={`#${section.id}`}
-            className={activeSection === section.id ? "on" : undefined}
-            aria-current={activeSection === section.id ? "true" : undefined}
-            onClick={(event) => {
-              event.preventDefault();
-              jumpTo(section.id);
-            }}
-          >
-            <span className="qtoc-tick" aria-hidden="true" />
-            <span className="qtoc-name">{section.name}</span>
-          </a>
-        ))}
-      </nav>
-
       <div className="q-shell">
+        {/* 目录：贴着正文左缘的一条窄轨，纵跨整页、随滚动停在视口里。
+            放在布局里由 grid 定位（而不是 fixed 覆盖层），才能自动贴住正文，
+            不必拿视口宽度去算侧栏和内边距。 */}
+        <nav className="qtoc" aria-label="页面目录">
+          <span className="qtoc-label">目录</span>
+          {visibleSections.map((section) => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              className={activeSection === section.id ? "on" : undefined}
+              aria-current={activeSection === section.id ? "true" : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                jumpTo(section.id);
+              }}
+            >
+              <span className="qtoc-tick" aria-hidden="true" />
+              <span className="qtoc-name">{section.name}</span>
+            </a>
+          ))}
+        </nav>
+
         {/* ---------------- 题头 ---------------- */}
         <div className="q-head" id="q-topic">
           <div className="q-head-top">
