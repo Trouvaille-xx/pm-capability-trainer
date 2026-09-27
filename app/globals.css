@@ -4844,6 +4844,123 @@ button.tag.tag-brand:hover {
   max-width: 42em;
 }
 
+/* ---------------- 悬空目录 ----------------
+   贴左侧沟槽的一条刻度轨：默认只有刻度，悬停（或键盘聚焦）才展开文字。
+
+   为什么用 fixed 覆盖层，而不是布局里的一列：
+   这一页刚从两栏改成一列，正是为了消掉「并排参差」；再加一列等于把它带回来。
+   覆盖层不占宽度，也不挤压阅读栏。
+
+   左侧只有 40px 沟槽（内容区的 padding-left），所以收起时必须真的小：
+   12px 刻度刚好落在正文左边缘之外；展开的标签会压在正文上，
+   所以悬停时垫一层底色把它压住，否则读不清。
+
+   侧栏展开时跟着内容一起平移（内容区是靠 body.rail-open 让位的），
+   而不是把它藏起来——目录在侧栏展开时同样有用。 */
+
+.qtoc {
+  position: fixed;
+  left: calc(var(--sidebar-w) + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 40; /* 低于侧栏的 50 */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  transition:
+    opacity 0.2s var(--ease),
+    left var(--rail-dur) var(--spring);
+}
+
+body.rail-open .qtoc {
+  left: calc(var(--sidebar-w-open) + 10px);
+}
+
+.qtoc-label {
+  font-size: 10px;
+  color: var(--ink-4);
+  margin-bottom: 8px;
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+}
+
+.qtoc a {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 0;
+  text-decoration: none;
+  color: var(--ink-4);
+  transition: color 0.18s var(--ease);
+}
+
+.qtoc-tick {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 1.5px;
+  background: currentColor;
+  transition: width 0.2s var(--ease);
+}
+
+.qtoc-name {
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+}
+
+/* 展开：悬停或键盘进入时显示文字，并垫一层底色压住下面的正文 */
+.qtoc:hover,
+.qtoc:focus-within {
+  background: var(--board);
+  box-shadow: 0 0 0 10px var(--board);
+}
+
+.qtoc:hover .qtoc-label,
+.qtoc:hover .qtoc-name,
+.qtoc:focus-within .qtoc-label,
+.qtoc:focus-within .qtoc-name {
+  opacity: 1;
+}
+
+.qtoc a:hover {
+  color: var(--ink-2);
+}
+
+.qtoc a.on {
+  color: var(--mark);
+}
+
+.qtoc a.on .qtoc-tick {
+  width: 22px;
+}
+
+/* 锚点跳转时别让目标贴到视口最上沿 */
+.q-head,
+.lead-main,
+.lead-side,
+.lead-foot > div {
+  scroll-margin-top: 24px;
+}
+
+/* 沟槽不够宽就不显示 */
+@media (max-width: 900px) {
+  .qtoc {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qtoc,
+  .qtoc a,
+  .qtoc-tick,
+  .qtoc-name,
+  .qtoc-label {
+    transition: none;
+  }
+}
+
 .lead-foot {
   display: grid;
   grid-template-columns: 1fr 1fr;

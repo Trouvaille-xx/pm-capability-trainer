@@ -58,17 +58,30 @@ function splitInterrupt(content: string): { body: string; cut: string } {
   };
 }
 
-/** 日期：页头只留年月日，不必显示到秒。 */
 /**
  * 回答时间。
  *
- * 两个回答的时间含义不同：左边是「我什么时候答的」，右边是「AI 什么时候生成的」，
- * 所以这里只给时间本身，语义由标签那一侧的说明词承担（见 blk-hint 的用法）。
+ * 两个回答的时间含义不同：我的回答是「我什么时候答的」，
+ * AI 回答是「AI 什么时候生成的」，所以这里只给时间本身，
+ * 语义由标签那一侧的说明词承担（见 blk-hint 的用法）。
  * 直接复用列表页的 formatDate，保证两页的日期风格一致（今天 22:34 / 2026-09-26）。
  */
 function when(iso: string): string {
   return formatDate(iso);
 }
+
+/**
+ * 页面各块的锚点。
+ *
+ * 悬空目录与滚动高亮共用同一份顺序，免得两处各写一遍、对不上。
+ */
+const SECTIONS: { id: string; name: string }[] = [
+  { id: "q-topic", name: "题目" },
+  { id: "q-mine", name: "我的回答" },
+  { id: "q-ai", name: "AI 回答" },
+  { id: "q-related", name: "相关知识" },
+  { id: "q-readings", name: "推荐阅读" },
+];
 
 export default function QuestionDetailPage() {
   const params = useParams<{ id: string }>();
@@ -101,6 +114,29 @@ export default function QuestionDetailPage() {
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  /** 悬空目录里当前高亮的那一节。 */
+  const [activeSection, setActiveSection] = useState("q-topic");
+
+  /* 目录高亮跟着滚动走。只观察真实存在的块——
+     「相关知识」「推荐阅读」在没内容时不会渲染，getElementById 会拿到 null。 */
+  useEffect(() => {
+    const nodes = SECTIONS.map((section) =>
+      document.getElementById(section.id),
+    ).filter((el): el is HTMLElement => el !== null);
+    if (nodes.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) setActiveSection(entry.target.id);
+        }
+      },
+      { rootMargin: "-90px 0px -70% 0px" },
+    );
+    for (const node of nodes) observer.observe(node);
+    return () => observer.disconnect();
+  }, [question]);
 
   const alive = useRef(true);
   useEffect(() => {
@@ -355,11 +391,50 @@ export default function QuestionDetailPage() {
   const shown = streaming !== "" ? streaming : ai;
   const { body: shownBody, cut: shownCut } = splitInterrupt(shown);
 
+  /** 目录只列真实存在的块 */
+  const visibleSections = SECTIONS.filter((section) => {
+    if (section.id === "q-related") return question.related.length > 0;
+    if (section.id === "q-readings") return question.readings.length > 0;
+    return true;
+  });
+
+  /** 跳转用平滑滚动，但尊重系统的「减少动态效果」。 */
+  function jumpTo(sectionId: string) {
+    setActiveSection(sectionId);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(sectionId)?.scrollIntoView({
+      behavior: reduce ? "auto" : "smooth",
+      block: "start",
+    });
+  }
+
   return (
     <div className="stack">
+      {/* 悬空目录：默认只有刻度，悬停才展开文字。
+          做成 fixed 覆盖层而不是布局里的一列 —— 重新加一列会把
+          刚去掉的「并排参差」问题带回来；覆盖层不占宽度。 */}
+      <nav className="qtoc" aria-label="页面目录">
+        <span className="qtoc-label">目录</span>
+        {visibleSections.map((section) => (
+          <a
+            key={section.id}
+            href={`#${section.id}`}
+            className={activeSection === section.id ? "on" : undefined}
+            aria-current={activeSection === section.id ? "true" : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              jumpTo(section.id);
+            }}
+          >
+            <span className="qtoc-tick" aria-hidden="true" />
+            <span className="qtoc-name">{section.name}</span>
+          </a>
+        ))}
+      </nav>
+
       <div className="q-shell">
         {/* ---------------- 题头 ---------------- */}
-        <div className="q-head">
+        <div className="q-head" id="q-topic">
           <div className="q-head-top">
             <span>{questionKindName(question.kind)}</span>
             <span className="state-mark">{questionStatusName(question.status)}</span>
@@ -422,7 +497,7 @@ export default function QuestionDetailPage() {
 
         {/* ---------------- 两个回答：主次式 ---------------- */}
         <div className="lead">
-          <div className="lead-main">
+          <div className="lead-main" id="q-mine">
             <div className="blk-label">
               我的回答
               <span className="blk-hint">
@@ -491,7 +566,7 @@ export default function QuestionDetailPage() {
             )}
           </div>
 
-          <aside className="lead-side">
+          <aside className="lead-side" id="q-ai">
             <div className="blk-label">
               AI 回答
               <span className="blk-hint">
@@ -563,7 +638,7 @@ export default function QuestionDetailPage() {
 
         {/* ---------------- 相关知识 + 推荐阅读 ---------------- */}
         <div className="lead-foot">
-          <div>
+          <div id="q-related">
             <div className="blk-label">
               相关知识
               <span className="blk-hint">
@@ -602,7 +677,7 @@ export default function QuestionDetailPage() {
             )}
           </div>
 
-          <div>
+          <div id="q-readings">
             <div className="blk-label">
               推荐阅读
               <span className="blk-hint">
