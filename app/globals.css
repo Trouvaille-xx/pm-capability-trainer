@@ -427,17 +427,12 @@ svg {
 }
 
 /* ---- 侧栏底部 ----
-   这块只在展开态渲染（见 Nav.tsx）。收起态不渲染是刻意的：
-   栏只有 68px 宽时这行字会折成很多行、把这块从 52px 撑到 270px 上下，
-   而它在收起 / 展开按钮的下方，会把按钮的位置顶来顶去。
-   CSS 侧的三种压法都不干净 —— min-height 只是下限、压不住内容，
-   absolute 空出的空间会被下一个 flex 项接走，display:none 又要额外
-   处理动画。不渲染则从根上不存在这个盒子。 */
+   两种状态都占位（收起态是空盒），高度在 CSS 里写死，不依赖内部文字有多少 ——
+   展开态文字正常排，收起态盒子里没有文字，所以不会被 68px 的栏宽折行撑高。
+   它不负责推底部：那是 .rail-toggle 的 margin-top: auto 干的，
+   这样按钮距栏底的距离是常数，收起 / 展开都不会动。 */
 .sidebar-foot {
-  /* 由它把「收起/展开按钮 + 这段说明」整体推到栏底。
-     放在这里而不是按钮上：底部说明在收起态不渲染，所以「有没有它」
-     只影响它自己那一格，按钮的相对位置不变。 */
-  margin-top: auto;
+  height: 52px;
   padding: 14px 14px 0;
   border-top: 1px solid rgba(20, 18, 15, 0.09);
   color: var(--nav-ink-3);
@@ -447,6 +442,8 @@ svg {
   gap: 8px;
   align-items: flex-start;
   flex: 0 0 auto;
+  /* 内容只在展开态存在（见 Nav.tsx）；收起态是空盒，别让它溢出 */
+  overflow: hidden;
 }
 
 .sidebar-foot svg {
@@ -460,12 +457,13 @@ svg {
   align-items: center;
   gap: 11px;
   height: 34px;
-  /* 这里不能写 margin-top: auto。
-     写了之后按钮会被推到「它下面那块的上方」，而底部说明在收起态不渲染，
-     按钮就直接落到栏底 —— 两个状态差出一个底部块的高度（实测 52px）。
-     改成「推底部的责任归底部块」（见 .sidebar-foot 的 margin-top: auto），
-     按钮就永远紧贴在底部块上面，位置由这条固定的边距决定。 */
-  margin: 0 12px 12px;
+  /* 由这个 auto 吸收「导航下方」的全部剩余空间，把
+     「按钮 + 底部说明」作为一个整体推到栏底。
+     放在按钮上而不是底部块上：底部块在两种状态下都是 52px（见 CSS），
+     所以按钮距栏底的距离是常数 —— 收起 / 展开不会让它动。
+     踩过的坑：折叠态那条覆盖规则里写 `margin: 0`，会把这里的 auto
+     一起抹掉，按钮就落到紧贴导航的位置（实测 y=313）。 */
+  margin: auto 12px 12px;
   padding: 0 8px;
   background: none;
   border: 0;
@@ -518,9 +516,10 @@ svg {
    那条 margin-top: auto 一起抹掉，按钮就不再被推到底部，
    而是紧跟在导航后面（实测 y 从 754 跳到 313）。 */
 .sidebar:not(.open) .rail-toggle {
-  /* 左右居中；margin-top 保持 0（不要写 auto，见基类注释）。
-     底部留 0：收起态没有底部说明，按钮直接贴着栏底内边距。 */
-  margin: 0 12px 0;
+  /* margin-top 必须保留 auto（继承基类），否则按钮失去「被推到底部」，
+     会落到紧贴导航的位置（实测 y 从 712 掉到 313）。
+     这里只收掉左右内边距与 gap，让图标在 68px 的栏里居中。 */
+  margin: auto 12px 12px;
   padding: 0;
   gap: 0;
   justify-content: center;
