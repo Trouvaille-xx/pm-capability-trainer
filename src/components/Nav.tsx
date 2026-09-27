@@ -180,24 +180,33 @@ export function Nav() {
         <span className="rail-toggle-label">{open ? "收起" : "展开"}</span>
       </button>
 
-      <div className="sidebar-foot">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1.7}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          width={14}
-          height={14}
-          aria-hidden="true"
-        >
-          <path d="M4 20V10" />
-          <path d="M10 20V4" />
-          <path d="M16 20v-7" />
-        </svg>
-        <span>每次训练都会留下可测量的报告</span>
-      </div>
+      {/* 底部说明只在展开态渲染。
+          收起态**不渲染**而不是「渲染了但 opacity: 0」：栏只有 68px 宽时，
+          这行字会被折成很多行、把这块从 52px 撑到 270px 上下，
+          进而把上面的收起 / 展开按钮挤走 —— 位置随状态跳。
+          CSS 里试过 min-height / absolute / display:none 三种压法都不干净：
+          min-height 只是下限压不住内容，absolute 空出的位置会被下一个
+          flex 项接走。不渲染则从根上不存在这个盒子。 */}
+      {open ? (
+        <div className="sidebar-foot">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.7}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            width={14}
+            height={14}
+            aria-hidden="true"
+          >
+            <path d="M4 20V10" />
+            <path d="M10 20V4" />
+            <path d="M16 20v-7" />
+          </svg>
+          <span>每次训练都会留下可测量的报告</span>
+        </div>
+      ) : null}
     </aside>
   );
 }

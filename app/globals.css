@@ -305,12 +305,15 @@ svg {
 }
 
 /* ---- 导航：折叠时是「一叠卡片的卡边」 ---- */
+/* 导航区高度只由它自己的条目决定，不让它 flex:1 去吃掉剩余空间。
+   原来它是 flex: 1 1 auto，于是「它有多高」取决于侧栏里其它块多高，
+   收起 / 展开时底部那块一变，nav 就跟着伸缩。 */
 .nav {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 0 12px;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -423,10 +426,19 @@ svg {
   margin-left: 0;
 }
 
-/* ---- 侧栏底部 ---- */
+/* ---- 侧栏底部 ----
+   这块只在展开态渲染（见 Nav.tsx）。收起态不渲染是刻意的：
+   栏只有 68px 宽时这行字会折成很多行、把这块从 52px 撑到 270px 上下，
+   而它在收起 / 展开按钮的下方，会把按钮的位置顶来顶去。
+   CSS 侧的三种压法都不干净 —— min-height 只是下限、压不住内容，
+   absolute 空出的空间会被下一个 flex 项接走，display:none 又要额外
+   处理动画。不渲染则从根上不存在这个盒子。 */
 .sidebar-foot {
+  /* 由它把「收起/展开按钮 + 这段说明」整体推到栏底。
+     放在这里而不是按钮上：底部说明在收起态不渲染，所以「有没有它」
+     只影响它自己那一格，按钮的相对位置不变。 */
   margin-top: auto;
-  padding: 14px 20px 0;
+  padding: 14px 14px 0;
   border-top: 1px solid rgba(20, 18, 15, 0.09);
   color: var(--nav-ink-3);
   font-size: 11.5px;
@@ -435,13 +447,6 @@ svg {
   gap: 8px;
   align-items: flex-start;
   flex: 0 0 auto;
-  opacity: 0;
-  transition: opacity 0.18s var(--ease);
-}
-
-.sidebar.open .sidebar-foot {
-  opacity: 1;
-  padding: 14px 14px 0;
 }
 
 .sidebar-foot svg {
@@ -455,7 +460,12 @@ svg {
   align-items: center;
   gap: 11px;
   height: 34px;
-  margin: 0 12px;
+  /* 这里不能写 margin-top: auto。
+     写了之后按钮会被推到「它下面那块的上方」，而底部说明在收起态不渲染，
+     按钮就直接落到栏底 —— 两个状态差出一个底部块的高度（实测 52px）。
+     改成「推底部的责任归底部块」（见 .sidebar-foot 的 margin-top: auto），
+     按钮就永远紧贴在底部块上面，位置由这条固定的边距决定。 */
+  margin: 0 12px 12px;
   padding: 0 8px;
   background: none;
   border: 0;
@@ -503,9 +513,14 @@ svg {
 /* 折叠态的开关也要居中：图标是这一栏里唯一的「控件」，
    靠左会跟上面居中的品牌标记对不齐。
    注意要同时收掉 gap —— label 虽然 opacity:0 但仍占位，
-   会把图标从中心挤到左边。 */
+   会把图标从中心挤到左边。
+   这里的 margin 必须写 auto 12px 0 而不是 0 —— 写成 0 会把基线里
+   那条 margin-top: auto 一起抹掉，按钮就不再被推到底部，
+   而是紧跟在导航后面（实测 y 从 754 跳到 313）。 */
 .sidebar:not(.open) .rail-toggle {
-  margin: 0;
+  /* 左右居中；margin-top 保持 0（不要写 auto，见基类注释）。
+     底部留 0：收起态没有底部说明，按钮直接贴着栏底内边距。 */
+  margin: 0 12px 0;
   padding: 0;
   gap: 0;
   justify-content: center;
