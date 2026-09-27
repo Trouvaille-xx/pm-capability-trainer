@@ -45,7 +45,7 @@ export const PROVIDER_LABELS: Record<
     name: "AnySearch",
     needsKey: false,
     keyOptional: true,
-    hint: "统一检索网关：匿名即可用（按 IP 限流、有每日免费额度），返回带摘要的结构化结果。填了 Key 走付费额度、并发更高。",
+    hint: "统一检索网关：把查询路由到最合适的数据源再融合重排，返回带摘要的结构化结果。可以不填密钥直接使用。",
   },
   tavily: {
     name: "Tavily",
@@ -272,8 +272,10 @@ async function searchAnySearch(
   if (response.status === 401 || response.status === 403) {
     throw new Error(
       `AnySearch 拒绝了这次请求（HTTP ${response.status}）：${
-        apiKey ? "API Key 无效、已停用或超额度" : "匿名额度可能已用完"
-      }。可在设置里清掉 Key 改用匿名，或换一个来源。`,
+        apiKey
+          ? "密钥无效或已停用，可在设置里清掉它，或换一个来源。"
+          : "可以到设置里补一个密钥再试，或换一个来源。"
+      }`,
     );
   }
   if (!response.ok) {

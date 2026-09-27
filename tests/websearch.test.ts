@@ -114,18 +114,18 @@ describe("AnySearch 来源", () => {
     expect(out.results[0].url).toBe("https://a.com");
   });
 
-  it("401/403 给出可操作的原因（Key 无效 vs 匿名额度用完），而不是笼统的失败", async () => {
+  it("401/403 区分「密钥有问题」和「没填密钥」，各给一条可操作的出路", async () => {
     mockFetch(() => new Response("nope", { status: 401 }));
 
     const withKey = await runSearch("测试", {
       ...ANYSEARCH_SETTINGS,
       apiKey: "bad",
     });
-    const anonymous = await runSearch("测试", ANYSEARCH_SETTINGS);
+    const noKey = await runSearch("测试", ANYSEARCH_SETTINGS);
 
     expect(withKey.ok).toBe(false);
-    expect(withKey.error).toContain("API Key 无效");
-    expect(anonymous.error).toContain("匿名额度");
+    expect(withKey.error).toContain("密钥无效或已停用");
+    expect(noKey.error).toContain("补一个密钥");
   });
 
   it("业务码非 0 也算失败", async () => {

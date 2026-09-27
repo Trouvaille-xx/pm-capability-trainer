@@ -321,7 +321,7 @@ export default function SettingsPage() {
 
   const openPrompt = prompts.find((p) => p.id === openId) ?? null;
   const webSearch = settings?.webSearch ?? null;
-  /* 有些来源是「密钥可选」（例如 AnySearch 匿名就能用），
+  /* 有些来源是「密钥可选」（例如 AnySearch 不填也能用），
      这类也要显示密钥输入框，但要说明可以不填。 */
   const webSearchKeyField = webSearch
     ? PROVIDER_LABELS[webSearch.provider].needsKey ||
@@ -1096,7 +1096,7 @@ export default function SettingsPage() {
                 const tag = label.needsKey
                   ? "需要密钥"
                   : label.keyOptional
-                    ? "可匿名"
+                    ? "密钥可选"
                     : "免费";
                 return (
                   <option key={id} value={id}>
@@ -1121,7 +1121,7 @@ export default function SettingsPage() {
                       ? "已配置"
                       : webSearchKeyRequired
                         ? "未配置"
-                        : "未配置（可匿名用）"}
+                        : "未配置（不填也能用）"}
                 </span>
               </span>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
