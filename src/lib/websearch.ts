@@ -1,9 +1,11 @@
 /**
  * 联网搜索。
  *
- * 支持五种来源：
+ * 支持六种来源：
  * - bing：抓 cn.bing.com 的结果页，不需要密钥，国内可直连（默认）
  * - duckduckgo：不需要密钥，直接抓 HTML 结果页。国内多数网络不可达
+ * - anysearch：统一检索网关，匿名即可用（按 IP 限流 + 每日免费额度），
+ *   返回结构化的 title/url/snippet；填 API Key 后走付费额度、并发更高
  * - tavily / serper / brave：需要各自的 API Key，结果更稳定
  *
  * 和 MCP 一样，这里绝不抛异常给上层：搜不到就返回空数组，
@@ -20,7 +22,14 @@ export interface SearchResult {
 
 export const PROVIDER_LABELS: Record<
   WebSearchSettings["provider"],
-  { name: string; needsKey: boolean; hint: string }
+  {
+    name: string;
+    /** 必须填 Key 才能用 */
+    needsKey: boolean;
+    /** 可以填但不必须（匿名模式也能跑），决定要不要显示密钥输入框 */
+    keyOptional?: boolean;
+    hint: string;
+  }
 > = {
   bing: {
     name: "Bing 国际版（免费）",
@@ -31,6 +40,12 @@ export const PROVIDER_LABELS: Record<
     name: "DuckDuckGo（免费）",
     needsKey: false,
     hint: "不需要密钥，但国内多数网络无法直连，可能一直搜索失败。",
+  },
+  anysearch: {
+    name: "AnySearch",
+    needsKey: false,
+    keyOptional: true,
+    hint: "统一检索网关：匿名即可用（按 IP 限流、有每日免费额度），返回带摘要的结构化结果。填了 Key 走付费额度、并发更高。",
   },
   tavily: {
     name: "Tavily",
@@ -219,6 +234,78 @@ async function searchTavily(
     }));
 }
 
+/**
+ * AnySearch 统一检索网关。
+ *
+ * 文档：https://www.anysearch.com/docs/api-endpoints/v1-search
+ *
+ * 它把查询路由到最合适的数据源再融合重排，返回带 snippet 的结构化结果——
+ * 比抓 Bing 结果页稳，而且匿名就能用（按 IP 限流 + 每日免费额度），
+ * 所以这里**不强制要求 Key**：有就带上（走付费额度、并发更高），没有就匿名。
+ *
+ * 注意文档里的一条坑：带了 Authorization 但 Key 无效时，
+ * 网关直接 401/403，**不会静默退回匿名**。所以要区分这两种失败原因，
+ * 否则用户会以为是「网络不通」而反复重试。
+ */
+async function searchAnySearch(
+  query: string,
+  max: number,
+  apiKey: string,
+): Promise<SearchResult[]> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+
+  const response = await fetch("https://api.anysearch.com/v1/search", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      query,
+      // 官方上限就是 10，超了没有意义
+      max_results: Math.min(10, Math.max(1, max)),
+      format: "json",
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      `AnySearch 拒绝了这次请求（HTTP ${response.status}）：${
+        apiKey ? "API Key 无效、已停用或超额度" : "匿名额度可能已用完"
+      }。可在设置里清掉 Key 改用匿名，或换一个来源。`,
+    );
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`AnySearch 返回 HTTP ${response.status}：${body.slice(0, 200)}`);
+  }
+
+  const json = (await response.json()) as {
+    /** 业务码，0 表示成功 */
+    code?: number;
+    message?: string;
+    data?: {
+      results?: { title?: string; url?: string; snippet?: string }[];
+    };
+  };
+
+  if (typeof json.code === "number" && json.code !== 0) {
+    throw new Error(`AnySearch 返回业务错误：${json.message ?? json.code}`);
+  }
+
+  const results = json.data?.results ?? [];
+  return results
+    .filter((r) => typeof r.url === "string" && r.url !== "")
+    .slice(0, max)
+    .map((r) => ({
+      // 文档说明 title 可能为空串，用 url 兜底，免得界面上出现一条无标题结果
+      title: r.title?.trim() || r.url || "",
+      url: r.url ?? "",
+      snippet: (r.snippet ?? "").slice(0, 400),
+    }));
+}
+
 async function searchSerper(
   query: string,
   max: number,
@@ -300,6 +387,10 @@ export async function runSearch(
   try {
     let results: SearchResult[];
     switch (settings.provider) {
+      case "anysearch":
+        // 不校验 Key：匿名模式是官方支持的用法
+        results = await searchAnySearch(q, max, settings.apiKey.trim());
+        break;
       case "tavily":
         if (!settings.apiKey) throw new Error("未填写 Tavily API Key");
         results = await searchTavily(q, max, settings.apiKey);

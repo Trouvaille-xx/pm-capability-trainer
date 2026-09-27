@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 const WEB_SEARCH_PROVIDERS: WebSearchProvider[] = [
   "bing",
   "duckduckgo",
+  "anysearch",
   "tavily",
   "serper",
   "brave",

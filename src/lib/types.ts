@@ -228,6 +228,8 @@ export type WebSearchProvider =
   | "bing"
   /** 无需密钥，但国内多数网络不可达 */
   | "duckduckgo"
+  /** 统一检索网关，匿名即可用（按 IP 限流 + 每日免费额度），填 Key 额度更高 */
+  | "anysearch"
   | "tavily"
   | "serper"
   | "brave";

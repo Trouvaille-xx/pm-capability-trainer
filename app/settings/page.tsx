@@ -321,7 +321,13 @@ export default function SettingsPage() {
 
   const openPrompt = prompts.find((p) => p.id === openId) ?? null;
   const webSearch = settings?.webSearch ?? null;
-  const webSearchNeedsKey = webSearch
+  /* 有些来源是「密钥可选」（例如 AnySearch 匿名就能用），
+     这类也要显示密钥输入框，但要说明可以不填。 */
+  const webSearchKeyField = webSearch
+    ? PROVIDER_LABELS[webSearch.provider].needsKey ||
+      PROVIDER_LABELS[webSearch.provider].keyOptional === true
+    : false;
+  const webSearchKeyRequired = webSearch
     ? PROVIDER_LABELS[webSearch.provider].needsKey
     : false;
   const disabledPrompts = prompts.filter((p) => !p.enabled).length;
@@ -1085,18 +1091,26 @@ export default function SettingsPage() {
                 })
               }
             >
-              {(Object.keys(PROVIDER_LABELS) as WebSearchProvider[]).map((id) => (
-                <option key={id} value={id}>
-                  {PROVIDER_LABELS[id].name}（{PROVIDER_LABELS[id].needsKey ? "需要密钥" : "免费"}）
-                </option>
-              ))}
+              {(Object.keys(PROVIDER_LABELS) as WebSearchProvider[]).map((id) => {
+                const label = PROVIDER_LABELS[id];
+                const tag = label.needsKey
+                  ? "需要密钥"
+                  : label.keyOptional
+                    ? "可匿名"
+                    : "免费";
+                return (
+                  <option key={id} value={id}>
+                    {label.name}（{tag}）
+                  </option>
+                );
+              })}
             </select>
             <div className="set-hint">
               {webSearch ? PROVIDER_LABELS[webSearch.provider].hint : ""}
             </div>
           </div>
 
-          {webSearchNeedsKey ? (
+          {webSearchKeyField ? (
             <div className="set-field">
               <span className="set-field-label">
                 搜索 API Key{" "}
@@ -1105,7 +1119,9 @@ export default function SettingsPage() {
                     ? "保存后清除"
                     : webSearch?.hasKey
                       ? "已配置"
-                      : "未配置"}
+                      : webSearchKeyRequired
+                        ? "未配置"
+                        : "未配置（可匿名用）"}
                 </span>
               </span>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1167,8 +1183,8 @@ export default function SettingsPage() {
               {publishing ? "保存中…" : "保存"}
             </button>
             <span className="set-status">
-              {webSearchNeedsKey && !webSearch?.hasKey
-                ? "这个服务商需要密钥，没填就会搜索失败"
+              {webSearchKeyRequired && !webSearch?.hasKey
+                ? "这个服务商必须填密钥，没填就会搜索失败"
                 : "这一块和 AI 配置一起保存"}
             </span>
           </div>
