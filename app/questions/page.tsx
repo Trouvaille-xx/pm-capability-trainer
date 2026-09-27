@@ -13,6 +13,7 @@ import { apiGet, apiSend, formatDate } from "@/lib/client";
 import { assignTilts, tiltStyle } from "@/lib/board";
 import { IconPlus, IconSave } from "@/components/icons";
 import { ConfirmDialog, Modal } from "@/components/Modal";
+import { DomainTags } from "@/components/DomainTags";
 import type { Question, QuestionKind } from "@/lib/types";
 
 /**
@@ -426,6 +427,9 @@ export default function QuestionsPage() {
                   </div>
 
                   <h2 className="q-title">{item.prompt}</h2>
+
+                  {/* 领域：原来便签上不显示，得点进去才知道归到哪一类 */}
+                  <DomainTags domains={item.domains} />
 
                   {/* 五格进度。整张纸上只有第二格是朱砂 ——
                       它标记「我自己动手写过」，跟 AI 生成的部分分得开。 */}

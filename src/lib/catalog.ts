@@ -230,6 +230,18 @@ export const DOMAINS = [
 ] as const;
 
 /**
+ * 领域的编号（从 01 起）。
+ *
+ * 领域标签上带这个编号：一是省掉「这到底是分类还是标签」的辨认，
+ * 二是用久了会记住每个领域的号（01 心理学、04 产品设计…），扫一眼就认出来。
+ * 认不出的领域（老数据里的自由字符串）返回空串，不编号。
+ */
+export function domainCode(value: string): string {
+  const index = (DOMAINS as readonly string[]).indexOf(value);
+  return index < 0 ? "" : String(index + 1).padStart(2, "0");
+}
+
+/**
  * 历史数据里出现过的领域别名 → 规范名。
  *
  * 领域以前是纯自由字符串，所以老数据里可能是「数据分析」「增长运营」

@@ -827,8 +827,70 @@ svg {
   padding-bottom: 1px;
 }
 
-.stars {
-  font-size: 12px;
+/* ---------------- 领域标签 ----------------
+   领域以前有两种叫法，但**没有任何视觉标记**：
+   - 题库 / 方法论的题头：裸文字，和分类、[状态]、出自 X、记于 X 完全同款
+   - 记录详情页：混在真标签里，都是下划线式
+   于是「产品设计 数据与分析」这一串读起来只是「一堆词」，分不出哪是领域。
+
+   这里给它一个专属形态：朱砂短竖线 + 编号 + 名称。
+   - 竖线是它的识别符，和「[方括号]」的状态、「出自 X」的说明文字、
+     下划线式真标签都区分得开
+   - 朱砂是这个版式里唯一的强调色，原设计就把它留给「归属 / 主次」这类信号
+   - 编号让它同时像一个分类（01 心理学、04 产品设计），用久了扫一眼就认出来 */
+
+.domains {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+/* 作为 .note-domain / .q-head-top 这类 baseline 对齐的 flex 子项时，
+   不能被压扁，也不能把外面的行撑高。 */
+.note-domain > .domains,
+.q-head-top > .domains {
+  flex: 0 1 auto;
+  align-self: baseline;
+}
+
+.domain {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* 短竖线：比边框细、比 border-left 短，像边注的记号 */
+.domain::before {
+  content: "";
+  align-self: center;
+  width: 2px;
+  height: 10px;
+  background: var(--mark);
+  flex: 0 0 auto;
+}
+
+.domain-code {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mark);
+  letter-spacing: 0.02em;
+}
+
+/* 便签上标题占主位，这里的领域只作为「归到哪一类」的一行小注 */
+.note .domains {
+  margin-top: 9px;
+}
+
+.note .domain {
+  color: var(--ink-4);
+}
+
+.stars {  font-size: 12px;
   letter-spacing: 0.08em;
   color: var(--ink-4);
   margin-top: 10px;

@@ -13,6 +13,7 @@ import {
   questionStatusName,
 } from "@/lib/catalog";
 import { apiGet, apiSend, formatDate } from "@/lib/client";
+import { DomainTags } from "@/components/DomainTags";
 import type { Question } from "@/lib/types";
 
 /**
@@ -439,9 +440,7 @@ export default function QuestionDetailPage() {
             <span>{questionKindName(question.kind)}</span>
             <span className="state-mark">{questionStatusName(question.status)}</span>
             {question.source ? <span>出自 {question.source}</span> : null}
-            {question.domains.map((d) => (
-              <span key={d}>{d}</span>
-            ))}
+            <DomainTags domains={question.domains} />
             <span>记于 {when(question.createdAt)}</span>
           </div>
           <h1>{question.prompt}</h1>

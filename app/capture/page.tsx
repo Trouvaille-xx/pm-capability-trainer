@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { CAPTURE_KINDS, DOMAINS, captureKindName } from "@/lib/catalog";
 import { apiGet, apiSend, formatDate } from "@/lib/client";
 import { ConfirmDialog, Modal } from "@/components/Modal";
+import { DomainTags } from "@/components/DomainTags";
 import type { Capture, CaptureKind } from "@/lib/types";
 
 /* ------------------------------------------------------------------ *
@@ -536,6 +537,9 @@ function CapturePageInner() {
                   </div>
 
                   <h2 className="note-title">{capture.title}</h2>
+
+                  {/* 领域：便签上一眼看出归到哪一类，不用点进去 */}
+                  <DomainTags domains={capture.domains} />
 
                   {capture.summary ? (
                     <p className="note-detail">{capture.summary}</p>

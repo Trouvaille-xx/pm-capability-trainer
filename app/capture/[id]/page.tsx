@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { captureKindName } from "@/lib/catalog";
 import { apiGet, apiSend, formatDate } from "@/lib/client";
 import { ConfirmDialog } from "@/components/Modal";
+import { DomainTags } from "@/components/DomainTags";
 import type { Capture } from "@/lib/types";
 
 /* 状态写成方括号里的批注记号，.state-mark 会自动补上 [ ]。 */
@@ -209,22 +210,21 @@ export default function CaptureDetailPage() {
           {capture.tags.length > 0 || capture.domains.length > 0 ? (
             <section className="reader-sec">
               <span className="reader-sec-label">标签</span>
-              <div className="row" style={{ gap: 9 }}>
-                {capture.tags.map((tag) => (
-                  <span key={tag} className="note-tags" style={{ marginTop: 0 }}>
-                    <span>{tag}</span>
-                  </span>
-                ))}
-                {capture.domains.map((domain) => (
-                  <span
-                    key={domain}
-                    className="note-tags"
-                    style={{ marginTop: 0 }}
-                  >
-                    <span>{domain}</span>
-                  </span>
-                ))}
-              </div>
+              {/* 领域和自由标签分两行：它们不是一类东西，
+                  挤在一行里以前都长一个样，分不出哪个是领域。 */}
+              <DomainTags domains={capture.domains} />
+              {capture.tags.length > 0 ? (
+                <div
+                  className="row"
+                  style={{ gap: 9, marginTop: capture.domains.length > 0 ? 10 : 0 }}
+                >
+                  {capture.tags.map((tag) => (
+                    <span key={tag} className="note-tags" style={{ marginTop: 0 }}>
+                      <span>{tag}</span>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </section>
           ) : null}
 

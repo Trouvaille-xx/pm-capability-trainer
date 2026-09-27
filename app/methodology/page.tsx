@@ -9,6 +9,7 @@ import { apiGet, apiSend } from "@/lib/client";
 import { assignTilts, plainSummary, tiltStyle } from "@/lib/board";
 import { IconPlus, IconSave } from "@/components/icons";
 import { ConfirmDialog, Modal } from "@/components/Modal";
+import { DomainTags } from "@/components/DomainTags";
 import type { MethodologyCard, TrainingScenario } from "@/lib/types";
 
 interface FormState {
@@ -406,7 +407,9 @@ function MethodologyPageInner() {
                 <span className="note-pin" aria-hidden="true" />
 
                 <div className="note-domain">
-                  <span>{card.domain}</span>
+                  {/* 领域用统一的标签形态，和状态（[内置]/[自建]）分开 ——
+                      以前两个都是裸文字，看不出哪个是领域 */}
+                  <DomainTags domains={[card.domain]} />
                   <span className="state-mark">
                     {card.builtin ? "内置" : "自建"}
                   </span>
