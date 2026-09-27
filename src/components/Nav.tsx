@@ -141,42 +141,42 @@ export function Nav() {
         aria-expanded={open}
         title={open ? "收起侧栏（[）" : "展开侧栏（[）"}
       >
-        {/* 两个状态用不同的图。
-            这个按钮改的是「栏的宽度」，所以画的是栏本身，而不是汉堡/叉
-            （那是「菜单开关」的隐喻，跟变宽变窄不是一回事）：
-              收起 —— 左窄条已填充 + 右侧留白，加一个向左的箭头
-              展开 —— 左宽条已填充 + 右侧两条内缩的线，加一个向右的箭头 */}
-        {open ? (
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.7}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="2.5" y="4" width="7" height="16" fill="currentColor" opacity="0.32" stroke="none" />
-            <path d="M14.5 8.5h7" />
-            <path d="M14.5 12h5" />
-            <path d="M14.5 15.5h7" />
-            <path d="m14.6 9.5-2.6 2.5 2.6 2.5" />
-          </svg>
-        ) : (
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.7}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="2.5" y="4" width="7" height="16" fill="currentColor" opacity="0.32" stroke="none" />
-            <path d="M14.5 12h7" />
-            <path d="m19.1 9.5 2.6 2.5-2.6 2.5" />
-          </svg>
-        )}
+        {/* 两个状态用同一套图形，只把箭头翻转方向。
+            这个按钮改的是「栏的宽度」，所以画的是栏本身（左侧已填充的窄条），
+            而不是汉堡/叉（那是「菜单开关」的隐喻，跟变宽变窄不是一回事）。
+
+            之前两个状态画的是不同的图形（展开态右侧有三条横线、收起态只有一条），
+            切换时线条会凭空出现 / 消失，按钮看起来在「动」。
+            现在形状完全一致：收起时箭头朝右（点一下会把栏推宽），
+            展开时同一根箭头朝左。
+            实现上用 transform 翻转同一个 svg，而不是写两份路径 ——
+            两份图形迟早会改歪，翻转则保证它的位置与形状严格不变。 */}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.7}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={
+            open
+              ? { transform: "scaleX(-1)" }
+              : undefined
+          }
+        >
+          <rect
+            x="2.5"
+            y="4"
+            width="7"
+            height="16"
+            fill="currentColor"
+            opacity="0.32"
+            stroke="none"
+          />
+          <path d="M14.2 12h7.3" />
+          <path d="m18.9 9.1 2.9 2.9-2.9 2.9" />
+        </svg>
         <span className="rail-toggle-label">{open ? "收起" : "展开"}</span>
       </button>
 
