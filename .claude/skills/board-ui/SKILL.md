@@ -6,8 +6,7 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 # 线索板设计系统（v5）—— 前端风格约束
 
 调性：**一个人用的练功房，不是后台管理系统**。材料是纸——便签、批注、页边。
-数据模型本身就是一本词典（词条 → 定义 → 详解 → 怎么用 → 例子），
-所以界面该像一板词条，而不是仪表盘或应用外壳。
+界面该像一板贴着便签的纸，而不是仪表盘或应用外壳。
 
 ## 一、纪律：这些是「有意禁掉」，不是疏忽
 
@@ -34,12 +33,11 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 
 **文案：不写解释性备注。** 界面上只留两类文字——
 
-1. **影响操作的**：取值范围（「可填 64 到 200000」）、安全声明（「只保存在本机」）、
-   三态说明（「留空就是不改动，想清掉点清除」）
-2. **用户看不出来的**：可用变量清单、需要手工填的格式要求
+1. **影响操作的**：取值范围、安全声明、三态说明（「留空即不改动，清除要点按钮」）
+2. **用户看不出来的**：需要手工填写的格式要求、可用变量清单
 
-**「解释了等于没解释」的一句都不要**：比如「这一块和 AI 配置一起保存」、
-「选一项会把接口地址和模型名一起换掉」、服务商自带的功能宣传语。
+**「解释了等于没解释」的一句都不要**——最典型的是「A 和 B 一起保存」这类自述，
+以及把两个字段的联动关系复述一遍的说明。
 判断标准一句话：**这句删了，会让人做错事吗？** 会 → 留；不会 → 删。
 
 ## 二、Token（一律用变量，不要写死颜色）
@@ -62,7 +60,7 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 
 /* 记号（全站「边注竖线」母题的高度阶梯）—— 详见下一节 */
 --mark-thick: 2px   /* 所有记号的线宽，恒定 */
---mark-xs: 10px     /* 领域标签、.note-tags、表单字段名 */
+--mark-xs: 10px     /* 分类标签、.note-tags、表单字段名 */
 --mark-sm: 13px     /* 小节标题、模块名 */
 --mark-lg: 20px     /* 页面大标题（h1::before 实际用 0.82em 跟字号走）*/
 
@@ -81,7 +79,7 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 
 | 高度 | 用在哪 |
 |---|---|
-| `--mark-xs` (10px) | 领域标签 `.domain`、`.note-tags`、表单字段名 `.set-field-label`、二级分组名 `.set-pgroup-name`、AI 回答四块的标签 `.q-ans-label` |
+| `--mark-xs` (10px) | 分类标签 `.domain`、`.note-tags`、表单字段名 `.set-field-label`、二级分组名 `.set-pgroup-name`、分段块标签 `.q-ans-label` |
 | `--mark-sm` (13px) | 小节标题 `.blk-label` / `.reader-sec-label`、模块名 `.set-module-name`、侧栏当前章节 `.toc a.on` |
 | `--mark-lg` (20px) | 页面大标题（`h1::before` 实际写 `0.82em`，跟着字号走，不必逐页配高度）|
 
@@ -102,12 +100,12 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 
 ## 四、核心视觉母题：便签
 
-`app/` 下多个列表页（题库、记录、方法论、训练）共用一套便签：
+多个列表页共用一套便签：
 
 ```html
 <article class="note" style="--tilt: -0.7deg">
   <span class="note-pin" aria-hidden="true"></span>   <!-- 图钉，必须 -->
-  <div class="note-domain"><!-- 领域 + [状态] --></div>
+  <div class="note-domain"><!-- 分类 + [状态] --></div>
   <h2 class="note-title">…</h2>
   <div class="note-foot">…</div>
 </article>
@@ -130,23 +128,23 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 | 按钮 | `.btn` `.btn-primary` `.btn-ghost` `.btn-danger` `.btn-sm`；文字按钮用 `.vs-btn` |
 | 表单 | `.field` `.input` `.textarea` `.select` `.form-input` `.form-textarea` `.form-choice-chip` |
 | 标签 | `.tag` + `.tag-brand/.tag-good/.tag-warn/.tag-bad`；`.state-mark`（自动补 `[ ]`） |
-| 领域 | `.domains` / `.domain` / `.domain-code`（用 `<DomainTags>` 组件，别手写） |
+| 分类标签 | `.domains` / `.domain` / `.domain-code`（用 `<DomainTags>` 组件，别手写） |
 | 空态 | `.empty`（行内）`.empty-board`（整块，配 `h3` + `p` + `.hint-actions`） |
 | 提示条 | `.notice` + `.notice-error/.notice-good/.notice-info` |
 | 弹窗 | `src/components/Modal.tsx` 的 `Modal` / `ConfirmDialog` |
 | 评分刻度 | `.score-bar` / `.score-fill` / `.score-row` |
-| 设置页 | `.setwrap`（`186px + 1fr` 两列）`.set-field` `.set-hint` `.set-status` |
-| 提示词编辑 | 两级分组 `.set-module` + `.set-pgroup`；编辑区 `.set-tpl-editor-head`（深色标题栏）`.set-tpl-body` `.set-tpl-actions`（吸底操作条） |
-| 题库详情 | `.q-shell`（目录轨 + 正文两列）`.qtoc` `.lead-main` `.lead-side` `.q-body` |
-| AI 回答四块 | `.q-ans` + `.q-ans-guide/-main/-warn/-plain`（结构 / 原文 / 扣分点 / 建议）；正文里的 `<<关键点>>` 渲染成 `.answer-mark` |
+| 两列表单页 | `.setwrap`（`186px + 1fr`）`.set-field` `.set-hint` `.set-status` |
+| 两级分组 + 就地编辑 | `.set-module` + `.set-pgroup`；编辑区 `.set-tpl-editor-head`（深色标题栏）`.set-tpl-body` `.set-tpl-actions`（吸底操作条） |
+| 详情页（目录轨 + 正文） | `.q-shell`（两列）`.qtoc` `.lead-main` `.lead-side` `.q-body` |
+| 分段信息块 | `.q-ans` + `.q-ans-guide/-main/-warn/-plain`（四档语气：轻 / 主 / 警示 / 素）；正文里的 `<<重点>>` 渲染成 `.answer-mark` |
 | 加载动画 | `.q-loading` + `.q-loading-marks i`（三根朱砂竖线依次起伏；`prefers-reduced-motion` 下静止） |
-| 便签状态 | 便签上加 `.stage-done` / `.stage-doing` 换图钉颜色；不加 class = 待作答 |
+| 便签状态色 | 便签上加 `.stage-done` / `.stage-doing` 换图钉颜色；不加 class = 默认灰 |
 | 记号竖线 | 见 §三；`.blk-label` `.reader-sec-label` `.q-ans-label` `.set-field-label` 等都自带 `::before` |
-| 来源与相关方法 | `.source-list` `.related-list` `.related-title` `.related-def`（相关方法名用朱砂） |
+| 附属列表 | `.source-list` / `.related-list` `.related-title` `.related-def`（列表项标题用朱砂） |
 | 骨架 | `.shell` / `.sidebar`（fixed）/ `.content` / `.rail-toggle` |
 
 **布局原语**：`.row` `.stack` `.grid .grid-2/3/4`。改间距优先用它们，别写 inline style——
-但本项目**允许必要的 inline style**（尤其 `ReportView` 的排版微调），
+但本项目**允许必要的 inline style**（个别排版微调），
 因为设计系统刻意不做「工具类全家桶」。判断标准：**能复用的进 CSS，一次性的可以 inline。**
 
 ## 六、无障碍：这些已经是既有标准，别退化
@@ -185,7 +183,6 @@ await p.evaluate(() =>
 - 给人看的位置跳动，**根因常在别处**：侧栏按钮「上下移动」的真因是
   `.nav` 是 `flex: 1`（吃掉剩余空间，所以它的高度取决于兄弟块），
   加上底部块在窄栏里折行从 52px 涨到 272px。
-- **dev 运行时不要跑 `npm run build`**：两边抢 `.next`，会得到假的类型错误、dev server 也会挂。
 - dev 模式有 Next 开发浮层，Playwright 直接 `click()` 会被它挡住；
   用 `page.evaluate(() => el.click())` 绕过。
 
@@ -211,8 +208,3 @@ npm run build        # 注意：先停 dev server
 
 视觉改动**必须实测两种状态**（展开/收起、悬停/不悬停、空/有内容），
 不要只截一张图就认为对了——这个项目的位置跳动问题都是"单看一张图没问题"。
-
-**先确认 dev server 指向的是你改的那棵树。** 这个仓库有多个 worktree，
-`localhost:3000` 上跑的可能是别人的工作树——表现是路由 404 或看不到你的改动。
-先 `curl -o /dev/null -w "%{http_code}" localhost:3000/你的路由` 探一下；
-不对就换个端口：`npx next dev -p 3001`。
