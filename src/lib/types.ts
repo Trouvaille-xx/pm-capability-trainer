@@ -50,8 +50,17 @@ export interface MethodologyCard {
   title: string;
   /** 一句话定义 */
   oneLiner: string;
-  /** 展开说明：原理、边界、常见误区 */
+  /** 展开说明：原理 */
   detail: string;
+  /**
+   * 边界：这个原理在什么条件下不成立 / 会减弱。
+   *
+   * 以前和「常见误区」一起被写在 detail 的文字里（「…。边界：…。常见误区：…」），
+   * 读起来是一坨连续段落，翻回去找边界很费劲。拆成独立字段后各成一节。
+   */
+  boundary: string;
+  /** 常见误区：最容易用错的地方 */
+  pitfalls: string;
   /** 在产品工作里怎么用 */
   howToUse: string;
   /** 具体例子 */
@@ -60,6 +69,13 @@ export interface MethodologyCard {
   scenarios: TrainingScenario[];
   /** 来源：关联的记录总结 */
   sourceCaptureIds: ID[];
+  /**
+   * 来源的文字补充（书名、文章链接、谁说的）。
+   *
+   * 为什么不只用 sourceCaptureIds：那是指向本平台「记录总结」的引用，
+   * 而知识点的来源常常在站外（一本书、一篇文章）。两者都要能表达。
+   */
+  sourceNote: string;
   builtin: boolean;
   createdAt: string;
   updatedAt: string;
@@ -304,12 +320,32 @@ export type PublicAISettings = Omit<
   mcpServers: PublicMCPServer[];
 };
 
+/** 题库模块的三个 AI 操作，各有自己的系统提示词。 */
+export type QuestionPromptScope =
+  | "question-classify"
+  | "question-answer"
+  | "question-readings"
+  | "question-review";
+
+/** 提示词服务于哪个功能模块。列表的第一层分组。 */
+export type PromptModule = "训练师" | "题库" | "报告";
+
 /**
  * 提示词的作用域。
- * 训练时的系统提示词由「场景块 + 模式块」拼装而成，两者都能单独调整，
+ *
+ * 训练时的系统提示词由「场景块 + 模式块 + 通用约束」拼装而成，三者都能单独调整，
  * 所以用户可以把「AI Grill 的质询强度」和「产品拆解的框架」分开改。
+ *
+ * 题库与报告是各自独立的一次调用，不参与拼装，一个 scope 对应一处调用。
+ * 它们出现在这里，是为了让「AI 在哪里被用到」和「提示词在哪里能改」是同一张表 ——
+ * 而不是一半能在界面上改、一半埋在代码里。
  */
-export type PromptScope = TrainingScenario | TrainingMode | "report" | "chat";
+export type PromptScope =
+  | TrainingScenario
+  | TrainingMode
+  | QuestionPromptScope
+  | "report"
+  | "chat";
 
 export interface PromptTemplate {
   id: ID;
@@ -320,6 +356,14 @@ export interface PromptTemplate {
   system: string;
   enabled: boolean;
   builtin: boolean;
+  /**
+   * 播种/上次升级时，内置文案的内容指纹。
+   *
+   * 用来区分「用户没动过的内置模板」和「用户改过的」：只有前者
+   * 才允许被新版内置文案覆盖。不存历史全文，一个短指纹就够 ——
+   * 只要和当前种子不一致，就说明这中间有人改过（用户改的，或旧版种子）。
+   */
+  seedHash?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -356,6 +400,27 @@ export interface ReadingItem {
   why: string;
 }
 
+/**
+ * 「我的回答」的评分。
+ *
+ * 四个维度固定，各 25 分，总分 100 —— 固定而不是让 AI 自创，
+ * 是为了让不同题目之间可比：只有维度一样，概览页才能把它们放在一起看趋势。
+ * 和训练报告（TrainingReport）是两套东西：那个评「一次训练过程」，
+ * 这个只评「一道题的作答」，所以结构更轻。
+ */
+export interface AnswerReview {
+  /** 四维度得分 */
+  scores: { dimension: string; score: number; max: number; comment: string }[];
+  /** 总分（各维度之和，满分 100） */
+  overall: number;
+  /** 两三句总评：先说做成了什么，再点最关键的问题 */
+  summary: string;
+  /** 具体怎么改，2-4 条，每条要能立刻上手 */
+  suggestions: string[];
+  /** 评分用的模型与时间，用来判断这条评分是不是过时了 */
+  at: string;
+}
+
 export interface Question {
   id: ID;
   /** 题目本身 */
@@ -384,6 +449,9 @@ export interface Question {
 
   /** 块五：推荐阅读 */
   readings: ReadingItem[];
+
+  /** 我对这道题的作答的评分（基于 myAnswer 生成，可反复重评） */
+  review?: AnswerReview;
 
   /** AI 归类/生成失败时的原因，用来在页面上如实说明 */
   lastError?: string;

@@ -214,14 +214,9 @@ export default function CaptureDetailPage() {
                   挤在一行里以前都长一个样，分不出哪个是领域。 */}
               <DomainTags domains={capture.domains} />
               {capture.tags.length > 0 ? (
-                <div
-                  className="row"
-                  style={{ gap: 9, marginTop: capture.domains.length > 0 ? 10 : 0 }}
-                >
+                <div className="note-tags" style={{ marginTop: 10 }}>
                   {capture.tags.map((tag) => (
-                    <span key={tag} className="note-tags" style={{ marginTop: 0 }}>
-                      <span>{tag}</span>
-                    </span>
+                    <span key={tag}>{tag}</span>
                   ))}
                 </div>
               ) : null}

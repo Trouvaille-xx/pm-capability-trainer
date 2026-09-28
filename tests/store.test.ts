@@ -88,6 +88,101 @@ describe("readCollection 播种语义", () => {
     const after = await store.readCollection("prompts");
     expect(after).toEqual([]);
   });
+
+  it("老数据缺了新增的内置 scope 时会补齐（回归：新提示词界面上看不见）", async () => {
+    // 模拟「旧版本的 prompts.json」：只有训练那几条，没有题库那几条
+    const seeded = (await import("@/lib/seed")).seedPrompts();
+    const legacy = seeded.filter((t) => !t.scope.startsWith("question-"));
+    const expectedMissing = seeded.filter((t) => t.scope.startsWith("question-"));
+    await store.writeCollection("prompts", legacy);
+
+    const after = await store.readCollection("prompts");
+    const scopes = after.map((t) => t.scope);
+    // 每一道题库提示词都应被补齐（不写死条数，免得下次加一条又挂）
+    for (const t of expectedMissing) {
+      expect(scopes).toContain(t.scope);
+    }
+    expect(scopes).toContain("question-classify");
+    expect(scopes).toContain("question-answer");
+    expect(scopes).toContain("question-review");
+    expect(scopes).toContain("question-readings");
+    // 原有条目一条不少，且总数 = 原有 + 补上的
+    expect(after.length).toBe(legacy.length + expectedMissing.length);
+  });
+
+  it("老记录（还没有指纹字段）会跟上新版种子", async () => {
+    const seeded = (await import("@/lib/seed")).seedPrompts();
+    const target = seeded.find((t) => t.scope === "chat")!;
+
+    // 模拟「旧版本写的记录」：还没有 seedHash 这个字段
+    const legacy = { ...target, system: "旧版通用约束文案" };
+    delete (legacy as { seedHash?: string }).seedHash;
+    await store.writeCollection("prompts", [legacy]);
+
+    const after = await store.readCollection("prompts");
+    const chat = after.find((t) => t.scope === "chat")!;
+    expect(chat.system).toBe(target.system);
+    expect(chat.seedHash).toBe(target.seedHash);
+  });
+
+  it("用户改过的内置模板不会被新版种子覆盖", async () => {
+    const seeded = (await import("@/lib/seed")).seedPrompts();
+    const target = seeded.find((t) => t.scope === "chat")!;
+
+    /* 用户手改后的状态：指纹停留在「播种时」的值（与当前种子不同），
+       内容也被改过。指纹对不上就说明这中间被改过，保留不动。 */
+    await store.writeCollection("prompts", [
+      { ...target, system: "我自己改的约束，别动它", seedHash: "deadbeef" },
+    ]);
+
+    const after = await store.readCollection("prompts");
+    const chat = after.find((t) => t.scope === "chat")!;
+    expect(chat.system).toBe("我自己改的约束，别动它");
+  });
+
+  it("指纹在历史清单里的内置模板会升级（改名 / 改标准这类改动）", async () => {
+    const seeded = (await import("@/lib/seed")).seedPrompts();
+    const { LEGACY_SEED_HASHES } = await import("@/lib/seed-history");
+    const target = seeded.find((t) => t.scope === "question-review")!;
+    const oldHash = LEGACY_SEED_HASHES["question-review"][0];
+    expect(oldHash).toBeTruthy();
+
+    // 停在旧版内置、且旧指纹被登记过 → 应当升级
+    await store.writeCollection("prompts", [
+      { ...target, system: "旧版评分提示词", seedHash: oldHash },
+    ]);
+
+    const after = await store.readCollection("prompts");
+    const review = after.find((t) => t.scope === "question-review")!;
+    expect(review.system).toBe(target.system);
+    expect(review.system).toContain("结构层次");
+  });
+
+  it("指纹不在历史清单里时保留（那就是用户改的）", async () => {
+    const seeded = (await import("@/lib/seed")).seedPrompts();
+    const target = seeded.find((t) => t.scope === "question-review")!;
+
+    await store.writeCollection("prompts", [
+      { ...target, system: "我自己写的评分标准", seedHash: "0badc0de" },
+    ]);
+
+    const after = await store.readCollection("prompts");
+    const review = after.find((t) => t.scope === "question-review")!;
+    expect(review.system).toBe("我自己写的评分标准");
+  });
+
+  it("被主动删掉的内置模板不会被补回来（回归：删不掉）", async () => {    const seeded = (await import("@/lib/seed")).seedPrompts();
+    // 只剩「产品拆解」这一条
+    const onlyTeardown = seeded.filter((t) => t.scope === "product-teardown");
+    await store.writeCollection("prompts", onlyTeardown);
+
+    // 用户把「产品拆解」也删了，DELETE 路由会记一笔
+    await store.retirePromptScope("product-teardown");
+    await store.writeCollection("prompts", []);
+
+    const after = await store.readCollection("prompts");
+    expect(after.map((t) => t.scope)).not.toContain("product-teardown");
+  });
 });
 
 describe("readSettings 深合并", () => {

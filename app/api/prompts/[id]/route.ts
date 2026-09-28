@@ -1,20 +1,12 @@
 import { assertSameOrigin, handle, ok, readBody, requireString } from "@/lib/api";
-import { patch, remove } from "@/lib/store";
+import { PROMPT_SCOPES } from "@/lib/catalog";
+import { patch, readCollection, remove, retirePromptScope } from "@/lib/store";
 import type { PromptScope, PromptTemplate, TrainingMode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const SCOPES: PromptScope[] = [
-  "product-teardown",
-  "requirement-research",
-  "process-design",
-  "assistant",
-  "grill",
-  "socratic",
-  "solo",
-  "report",
-  "chat",
-];
+/* scope 白名单从目录派生，与 POST 用的是同一张表（见 app/api/prompts/route.ts） */
+const SCOPES: PromptScope[] = PROMPT_SCOPES.map((s) => s.id);
 
 const MODES: TrainingMode[] = ["assistant", "grill", "socratic", "solo"];
 
@@ -54,8 +46,21 @@ export async function DELETE(request: Request, { params }: Params) {
   return handle(async () => {
     assertSameOrigin(request);
     const { id } = await params;
+
+    /* 删之前先看一眼：内置模板被删掉后要记一笔，
+       否则下次读取会因为「种子里有、文件里没有」把它补回来 —— 等于删不掉。 */
+    const target = (await readCollection("prompts")).find((p) => p.id === id);
+
     const deleted = await remove("prompts", id);
     if (!deleted) return ok({ error: "提示词不存在" }, 404);
-    return ok({ deleted: true, note: "内置模板删除后，重启不会自动恢复；如需恢复请删除 data/prompts.json" });
+
+    if (target?.builtin) {
+      await retirePromptScope(target.scope);
+    }
+
+    return ok({
+      deleted: true,
+      note: "这条不会再被自动补回来。想恢复内置文案，需要在「提示词管理」里新建一条同名作用域的模板。",
+    });
   });
 }

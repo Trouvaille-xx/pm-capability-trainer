@@ -35,6 +35,8 @@ export async function PATCH(request: Request, { params }: Params) {
       changes.oneLiner = requireString(body.oneLiner, "一句话定义", { max: 500 });
     }
     if (body.detail !== undefined) changes.detail = optionalString(body.detail);
+    if (body.boundary !== undefined) changes.boundary = optionalString(body.boundary);
+    if (body.pitfalls !== undefined) changes.pitfalls = optionalString(body.pitfalls);
     if (body.howToUse !== undefined) changes.howToUse = optionalString(body.howToUse);
     if (body.example !== undefined) changes.example = optionalString(body.example);
     // 与 POST 一致：过滤掉不在白名单里的场景，而不是强转
@@ -45,6 +47,9 @@ export async function PATCH(request: Request, { params }: Params) {
     }
     if (body.sourceCaptureIds !== undefined) {
       changes.sourceCaptureIds = stringArray(body.sourceCaptureIds, 20);
+    }
+    if (body.sourceNote !== undefined) {
+      changes.sourceNote = optionalString(body.sourceNote, 300);
     }
 
     const updated = await patch("methodology", id, changes);

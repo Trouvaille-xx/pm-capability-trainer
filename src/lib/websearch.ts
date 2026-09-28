@@ -20,6 +20,14 @@ export interface SearchResult {
   snippet: string;
 }
 
+/**
+ * 各家搜索来源的能力标记。
+ *
+ * 只留「影响用户选择」的两件事：要不要密钥、密钥是不是可选的。
+ * 以前这里还有一段每家一句的 `hint`，界面上选中服务商后显示在下面 ——
+ * 那些话（尤其是自带宣传口径的）对做决定没有帮助，已经去掉。
+ * 各家的行为差异见文件头注释。
+ */
 export const PROVIDER_LABELS: Record<
   WebSearchSettings["provider"],
   {
@@ -28,39 +36,32 @@ export const PROVIDER_LABELS: Record<
     needsKey: boolean;
     /** 可以填但不必须（匿名模式也能跑），决定要不要显示密钥输入框 */
     keyOptional?: boolean;
-    hint: string;
   }
 > = {
   bing: {
-    name: "Bing 国际版（免费）",
+    name: "Bing 国际版",
     needsKey: false,
-    hint: "抓 cn.bing.com 的公开结果页，国内网络可直连，不需要密钥。推荐先用它。",
   },
   duckduckgo: {
-    name: "DuckDuckGo（免费）",
+    name: "DuckDuckGo",
     needsKey: false,
-    hint: "不需要密钥，但国内多数网络无法直连，可能一直搜索失败。",
   },
   anysearch: {
     name: "AnySearch",
     needsKey: false,
     keyOptional: true,
-    hint: "统一检索网关：把查询路由到最合适的数据源再融合重排，返回带摘要的结构化结果。可以不填密钥直接使用。",
   },
   tavily: {
     name: "Tavily",
     needsKey: true,
-    hint: "为 AI 检索设计的搜索 API，返回带正文摘要的结果，质量最好。",
   },
   serper: {
     name: "Serper",
     needsKey: true,
-    hint: "Google 搜索结果 API，覆盖广。",
   },
   brave: {
     name: "Brave Search",
     needsKey: true,
-    hint: "独立索引，隐私友好；国内网络可能不可达。",
   },
 };
 

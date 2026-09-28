@@ -25,6 +25,26 @@
    ========================================================================== */
 
 :root {
+  /* ---------------------------------------------------------------- *
+   * 边注记号（mark）
+   *
+   * 全站只有这一种「记号」：一条朱砂短竖线。它标记「这一行属于哪一类」——
+   * 领域、标签、小节标题、页面大标题都用它。
+   *
+   * 之所以要统一：改之前有四种记法各写各的 ——
+   *   领域          → 朱砂竖线
+   *   .blk-label    → 一条灰横线
+   *   .section-label → 什么都没有
+   *   .reader-sec-label → 什么都没有
+   * 于是同一层级的信息看起来不是一类东西。
+   *
+   * 高度分三档，对应信息的轻重。
+   * ---------------------------------------------------------------- */
+  --mark-thick: 2px;
+  --mark-xs: 10px; /* 领域、标签：贴在正文旁的小注 */
+  --mark-sm: 13px; /* 小节标题：展开说明 / 怎么用 / 例子 */
+  --mark-lg: 20px; /* 页面大标题 */
+
   /* ---- 纸与板：板比纸深，纸才能读成「一张纸」 ---- */
   --bg: #efece6;
   --surface: #ffffff;
@@ -109,6 +129,11 @@
   --sans: var(--font);
   --serif: "Source Han Serif SC", "Songti SC", "SimSun", "Iowan Old Style",
     "Palatino", Georgia, serif;
+  /* 手写体：只用在「分数」这一处 —— 像老师用红笔在卷子上写了个分。
+     只在标题旁出现一次，所以可以放心用系统自带的手写/花体字，
+     不引入 webfont（这里本来就是离线优先的本地应用）。 */
+  --hand: "Segoe Script", "Bradley Hand", "Kaiti SC", "STKaiti", "KaiTi",
+    "Comic Sans MS", cursive;
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
@@ -178,6 +203,25 @@ h4 {
 
 h1 {
   font-size: 30px;
+}
+
+/* 页面大标题的边注记号。
+   竖线高度用 em 而不是固定 px：h1 的字号在不同页面被覆盖过
+   （全局 30px、.page-head 28px、.q-head 30px），用 em 才能跟着字号走，
+   不必逐个页面配一遍高度。
+   记号靠 transform 垂直居中（不用 align-items），这样即便 h1 是多行的，
+   竖线高度也只跟字号有关、不会被行数拉长。 */
+h1::before {
+  content: "";
+  display: inline-block;
+  width: var(--mark-thick);
+  /* 比正文里的记号线粗一档，配得上 30px 的衬线大字；
+     用 em 跟着字号走，不必逐个页面配高度。 */
+  height: 0.82em;
+  margin-right: 14px;
+  background: var(--mark);
+  transform: translateY(0.04em);
+  vertical-align: baseline;
 }
 
 h2 {
@@ -589,10 +633,19 @@ svg {
 .section-label {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   font-size: 12.5px;
   color: var(--ink-3);
   margin-bottom: 18px;
+}
+/* 记号：朱砂短竖线。下面那条延伸线（::after）保留 ——
+   记号负责「属于哪一类」，延伸线负责「这一节到哪里」。 */
+.section-label::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-sm);
+  background: var(--mark);
 }
 
 .section-label::after {
@@ -724,6 +777,19 @@ svg {
   background: radial-gradient(circle at 35% 30%, #e8897a 0%, var(--mark) 55%, #7d271c 100%);
 }
 
+/* ---- 题卡的完成状态：看一眼图钉的颜色就知道到哪一步了 ----
+   已完成 = 深红（四块内容都齐了，可以放下了）
+   作答中 = 橙黄（我答了，但还没齐，是待办）
+   待作答 = 原来的灰白（还没碰）
+   颜色只用在这里，不改纸的底色 —— 纸是内容，图钉是状态。 */
+.note.stage-done .note-pin {
+  background: radial-gradient(circle at 35% 30%, #d4786a 0%, #9b2f22 52%, #5c1a12 100%);
+}
+
+.note.stage-doing .note-pin {
+  background: radial-gradient(circle at 35% 30%, #fbe0a8 0%, #e0a13a 52%, #9c6a18 100%);
+}
+
 /* 头行：类目 + 状态。两个独立元素，不是「·」拼出来的字符串。 */
 .note-domain {
   display: flex;
@@ -821,18 +887,33 @@ svg {
   background: var(--ink-4);
 }
 
+/* 标签（适用训练场景、记录的自定义标签）。
+   原来用下划线式，和自由标签、领域标签混在一起看不出区别；
+   现在统一到边注记号语言：朱砂短竖线 + 文字。
+   记号高度用 --mark-xs —— 和领域标签同一档（都是贴在正文旁的小注）。
+   用法固定为「容器 .note-tags > 每个标签一个 span」。 */
 .note-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  align-items: center;
+  gap: 7px 14px;
   margin-top: 11px;
 }
 
-.note-tags span {
+.note-tags > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11.5px;
   color: var(--ink-3);
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: 1px;
+}
+
+.note-tags > span::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
+  background: var(--mark);
 }
 
 /* ---------------- 领域标签 ----------------
@@ -876,8 +957,8 @@ svg {
 .domain::before {
   content: "";
   align-self: center;
-  width: 2px;
-  height: 10px;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
   background: var(--mark);
   flex: 0 0 auto;
 }
@@ -1086,6 +1167,19 @@ svg {
   padding-bottom: 20px;
   margin-bottom: 22px;
   border-bottom: 1px solid var(--rule);
+  /* 这一句是整张纸的定义行，也是最重要的一行 —— 给它最粗的一档记号。
+     用 padding + 伪元素定位，竖线随内容高度拉伸到整段。 */
+  position: relative;
+  padding-left: 16px;
+}
+.reader-def::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.32em;
+  bottom: 20px;
+  width: var(--mark-thick);
+  background: var(--mark);
 }
 
 .reader-sec {
@@ -1093,10 +1187,21 @@ svg {
 }
 
 .reader-sec-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   font-size: 12.5px;
-  color: var(--ink-3);
+  font-weight: 600;
+  color: var(--ink);
   margin-bottom: 9px;
+}
+/* 边注记号：朱砂短竖线（高度档位见 :root 的 --mark-*） */
+.reader-sec-label::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-sm);
+  background: var(--mark);
 }
 
 .reader-sec-body,
@@ -1109,6 +1214,89 @@ svg {
 .reader-example {
   padding-left: 16px;
   border-left: 2px solid var(--rule);
+}
+
+/* 来源里的记录链接（记录标题 + 记录类型）。
+   这里用墨色下划线，不是朱砂 —— 朱砂留给「相关方法」那一处，
+   同一张纸上只保留一个朱砂的「可去往别处」信号。 */
+.source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.source-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 3px 0;
+}
+
+.source-list a {
+  font-size: 14px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.source-list a:hover {
+  color: var(--mark);
+  border-bottom-color: var(--mark);
+}
+
+.source-kind {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* 相关方法：同领域的其它词条。
+   方法名用朱砂 —— 之前它们只是浏览器默认的圆点列表，
+   和整张纸的边注记号语言完全脱节（截图里那排 disc 就是这么来的）。
+   现在换成「朱砂短竖线 + 朱砂方法名」，一眼能看出这是可跳转的。 */
+.related-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.related-list li + li {
+  margin-top: 10px;
+}
+
+.related-list a {
+  display: block;
+  position: relative;
+  padding-left: 16px;
+}
+
+.related-list a::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
+  background: var(--mark);
+}
+
+.related-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mark);
+}
+
+.related-def {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+/* 小节标题后面跟的灰字补充（『同属「数据与分析」』这类）。 */
+.blk-hint {
+  font-weight: 400;
+  font-size: 11.5px;
+  color: var(--ink-3);
 }
 
 .reader-actions {
@@ -1363,23 +1551,28 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 8px 14px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--line-2);
-  background: var(--surface);
-  color: var(--ink);
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  border-radius: 0;
+  color: var(--ink-2);
+  font-family: var(--sans);
   font-size: 13px;
   font-weight: 560;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: var(--sh-xs);
-  transition: background 0.13s var(--ease), border-color 0.13s var(--ease),
-    box-shadow 0.13s var(--ease), transform 0.1s var(--ease), opacity 0.13s;
+  /* 次级动作 = 纯文字 + 下划线，像书里的交叉引用。
+     去掉原来的「描边 + 圆角 + 投影」：那是应用外壳的形状，
+     跟这套纸面语言不一致，而且 --r-sm / --sh-xs 都已被归零，
+     那两条声明本来就是死的。 */
+  border-bottom: 1px solid var(--line-3);
+  transition: color 0.13s var(--ease), border-color 0.13s var(--ease),
+    background 0.13s var(--ease), opacity 0.13s;
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--surface-2);
-  border-color: var(--line-3);
+  color: var(--ink);
+  border-bottom-color: var(--ink);
 }
 
 .btn:active:not(:disabled) {
@@ -1389,7 +1582,6 @@ textarea {
 .btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
 .btn svg {
@@ -1398,41 +1590,40 @@ textarea {
   flex: 0 0 15px;
 }
 
-/* 主按钮：蓝色实心。整页只有一个是主按钮，它就是视觉落点 */
-/* 主操作按钮：墨色实底。不用朱砂 ——
-   朱砂留给「正在进行」那类只出现一次的信号，
-   而按钮在每一页都有，用朱砂等于把信号稀释成常态。 */
+/* 主操作按钮：墨色实底。**不用朱砂** ——
+   朱砂留给「你在这里」那类只出现一次的信号（含刚统一的边注记号），
+   而按钮每一页都有，用朱砂等于把信号稀释成常态。
+   实底的作用是「一屏唯一的视觉落点」，用墨色就够，不必动强调色。 */
 .btn-primary {
+  padding: 8px 16px;
   background: var(--ink);
-  border-color: var(--ink);
   color: var(--paper);
   font-weight: 600;
+  border-bottom: 0;
 }
 
 .btn-primary:hover:not(:disabled) {
   background: #2c2822;
-  border-color: #2c2822;
+  color: var(--paper);
 }
 
 .btn-primary:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: var(--sh-xs);
 }
 
 .btn-danger {
   color: var(--bad);
-  border-color: var(--bad-line);
+  border-bottom-color: var(--bad-line);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: var(--bad-soft);
-  border-color: var(--bad);
+  color: var(--bad);
+  border-bottom-color: var(--bad);
 }
 
 .btn-sm {
-  padding: 5px 10px;
-  font-size: 12px;
-  border-radius: var(--r-xs);
+  padding: 4px 1px;
+  font-size: 12.5px;
 }
 
 .btn-sm svg {
@@ -1442,16 +1633,13 @@ textarea {
 }
 
 .btn-ghost {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
   color: var(--ink-3);
+  border-bottom-color: transparent;
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: var(--surface-2);
   color: var(--ink);
-  border-color: transparent;
+  border-bottom-color: var(--line-3);
 }
 
 /* 分组小标题：直接分组展示，不用标签筛选。
@@ -3814,7 +4002,9 @@ button.tag.tag-brand:hover {
 }
 
 .toc a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13.5px;
   color: var(--ink-3);
   padding: 5px 0;
@@ -3822,8 +4012,25 @@ button.tag.tag-brand:hover {
   transition: color 0.18s var(--ease);
 }
 
+/* 每个章节名前面都放一根朱砂短竖线 —— 和全站的边注记号语言一致。
+   以前只有「当前这一节」带一个 — 号，其余几节是光的，
+   一列看下来分不清哪些是标签。现在统一有记号，
+   当前项再额外加深颜色、拉长记号，层次仍然在。 */
+.toc a::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
+  background: var(--rule);
+  transition: background 0.18s var(--ease), height 0.18s var(--ease);
+}
+
 .toc a:hover {
   color: var(--ink-2);
+}
+
+.toc a:hover::before {
+  background: var(--mark);
 }
 
 .toc a.on {
@@ -3832,8 +4039,8 @@ button.tag.tag-brand:hover {
 }
 
 .toc a.on::before {
-  content: "— ";
-  color: var(--mark);
+  background: var(--mark);
+  height: var(--mark-sm);
 }
 
 /* ---- 章节 ---- */
@@ -3878,11 +4085,24 @@ button.tag.tag-brand:hover {
   border-bottom: 0;
 }
 
+/* 填表行的字段名也带朱砂短竖线 —— 和模块名、章节名同一套记号语言。
+   以前只有列表的小节标题有记号，填表区（模板名称 / 系统提示词这种）
+   是光的，一页里两套排版语言。 */
 .set-field-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 12px;
   color: var(--ink-4);
-  display: block;
   margin-bottom: 9px;
+}
+
+.set-field-label::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
+  background: var(--mark);
 }
 
 /* 必填星号：用灰，不用朱砂。表单里三四个星号一起红，
@@ -4127,6 +4347,116 @@ button.tag.tag-brand:hover {
 
 .set-tpl-body .set-textarea:focus {
   border-color: var(--ink);
+}
+
+/* ---- 两级分组：功能模块 → 模块内的细分 ----
+   模板从 9 条涨到 12 条之后，一层平铺开始难找东西；
+   而且「题库」的三条和训练那几条不是一回事，混在一起
+   会让人误以为它们也参与训练拼装。 */
+.set-module {
+  margin-top: 30px;
+}
+
+.set-module-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--ink);
+}
+
+/* 模块名用朱砂竖线起头，和全站的边注记号语言一致 ——
+   这是列表里最高一级，给最粗的一档记号。 */
+.set-module-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.set-module-name::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-sm);
+  background: var(--mark);
+}
+
+.set-module-lead {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.set-pgroup {
+  margin-top: 16px;
+}
+
+/* 二级分组名：轻一些，但仍有记号，能看出它是模块内部的小节 */
+.set-pgroup-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.set-pgroup-name::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
+  background: var(--rule);
+}
+
+/* ---- 编辑区：说清「在改哪一条」，并且把范围框住 ---- */
+.set-tpl-editor-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 18px;
+  padding: 9px 12px;
+  background: var(--ink);
+  /* 深底浅字：这一条是「你正在改的东西」的标题栏，
+     和列表行的浅色形成对比，一进编辑区就知道换场了 */
+}
+
+.set-tpl-editor-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.set-tpl-editor-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--paper);
+}
+
+.set-tpl-editor-head .set-tpl-meta {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* 展开的编辑区整体加一层底与左边框的规则在下方 .set-tpl-wrap:has(.set-tpl-body)，
+   这里不再重复一份 —— 两处冲突时后写的赢，会看不出哪份在生效。 */
+
+/* 操作条吸底：长提示词滚下去之后也点得到保存 */
+.set-tpl-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  margin-top: 4px;
+  background: var(--paper-2);
+  border-top: 1px solid var(--rule);
 }
 
 
@@ -5166,21 +5496,22 @@ button.tag.tag-brand:hover {
 
 .blk-label {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 9px;
   margin-bottom: 16px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--ink);
 }
 
+/* 记号：从「灰色横线」改成统一的朱砂竖线。
+   横线读起来像分隔符，而这里要表达的是「这一块是什么」。 */
 .blk-label::before {
   content: "";
-  width: 14px;
-  height: 1px;
-  background: var(--ink-4);
+  width: var(--mark-thick);
+  height: var(--mark-sm);
+  background: var(--mark);
   flex: 0 0 auto;
-  transform: translateY(-3px);
 }
 
 .blk-label .blk-hint {
@@ -5366,6 +5697,274 @@ button.tag.tag-brand:hover {
   color: var(--ink-3);
   margin-bottom: 14px;
 }
+
+/* ---------------- AI 回答的四块 ----------------
+   四块各有用处，视觉上要分得出主次：
+   ① 面试回答结构 —— 怎么讲（浅底、小一号）
+   ② 面试回答原文 —— 讲什么（主角，白纸黑字、字号正常）
+   ③ 警惕容易被扣分点 —— 警示（左侧朱砂线）
+   ④ 回答建议 —— 待办（素净）
+   靠字号、底色、左侧记号三条线区分层级，不用颜色堆砌。 */
+.q-ans {
+  margin-bottom: 22px;
+}
+
+.q-ans:last-child {
+  margin-bottom: 0;
+}
+
+.q-ans-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+
+.q-ans-label::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
+  background: var(--rule);
+}
+
+/* ① 发言结构：浅底 + 灰边线 —— 是「怎么讲」，比正文本事轻一档 */
+.q-ans-guide {
+  padding: 13px 16px;
+  background: var(--paper-2);
+  border-left: 2px solid var(--rule);
+}
+
+/* ② 面试回答原文：主角。给一条朱砂左边线把它立起来，
+   底色保持白纸，字号用页面正文的规格。 */
+.q-ans-main {
+  padding-left: 16px;
+  border-left: 2px solid var(--mark);
+}
+
+.q-ans-main .q-ans-label {
+  color: var(--ink-2);
+}
+
+.q-ans-main .md {
+  font-size: 14.5px;
+  line-height: 1.88;
+  color: var(--ink);
+}
+
+/* ③ 扣分点：警示。标题的记号用朱砂挑出来 */
+.q-ans-warn .q-ans-label {
+  color: var(--mark);
+}
+
+.q-ans-warn .q-ans-label::before {
+  background: var(--mark);
+}
+
+/* ④ 回答建议：素净收尾 */
+.q-ans-plain .q-ans-label {
+  color: var(--ink-2);
+}
+
+/* 辅助块的正文：小一号、行距紧一点 */
+.q-guide-body {
+  font-size: 13px;
+  line-height: 1.78;
+  color: var(--ink-3);
+}
+
+.q-guide-body p {
+  margin: 0 0 5px;
+}
+
+.q-guide-body p:last-child {
+  margin-bottom: 0;
+}
+
+.q-guide-body ol,
+.q-guide-body ul {
+  margin: 0;
+  padding-left: 1.35em;
+}
+
+/* ---------------- 关键点：朱砂 ----------------
+   AI 用 <<>> 标出的「得分点」。整页只有两处用朱砂（这里是其一，
+   另一处是评分），所以它一定是最扎眼的那个 —— 这正是要的效果：
+   一篇长回答里，用户该先看到的是这几个词。 */
+.answer-mark {
+  color: var(--mark);
+  font-weight: 600;
+  /* 淡淡的底纹，扫读时更容易被抓住；不用下划线，
+     下划线会和正文里的链接混淆 */
+  background: rgba(179, 58, 43, 0.07);
+  padding: 0 2px;
+}
+
+/* ---------------- 评分：手写红字 + 折叠明细 ---------------- */
+
+/* 分数写在「我的回答」标题旁边，像老师在卷子上打的分的写法：
+   手写体、朱砂色、大一号。 */
+.score-mark {
+  font-family: var(--hand);
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--mark);
+  /* 轻微倾斜：手写的感觉，也让它和旁边的正文明显不是一种东西 */
+  transform: rotate(-3deg);
+  margin-left: 2px;
+}
+
+.score-mark-max {
+  font-size: 14px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.review-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 7px 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.review-toggle:hover {
+  color: var(--ink);
+}
+
+.review-toggle-arrow {
+  color: var(--mark);
+  font-size: 11px;
+}
+
+.review-box {
+  padding: 16px 18px;
+  background: var(--paper-2);
+  border-left: 2px solid var(--mark);
+}
+
+.review-summary {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: var(--ink-2);
+}
+
+.review-dims {
+  display: grid;
+  gap: 13px;
+}
+
+.review-dim-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.review-dim-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.review-dim-score {
+  font-family: var(--hand);
+  font-size: 19px;
+  color: var(--mark);
+}
+
+.review-dim-max {
+  font-size: 11.5px;
+  opacity: 0.6;
+}
+
+/* 分数条：和概览页的能力画像同一种表达 */
+.review-bar {
+  height: 3px;
+  background: rgba(20, 18, 15, 0.08);
+}
+
+.review-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--mark);
+}
+
+.review-dim-comment {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--ink-3);
+}
+
+.review-sug {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.review-sug-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.review-sug-label::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
+  background: var(--mark);
+}
+
+.review-sug ul {
+  margin: 0;
+  padding-left: 1.3em;
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--ink-2);
+}
+
+.review-sug li + li {
+  margin-top: 5px;
+}
+
+/* 评分按钮是「针对这份回答」的主操作，给墨色实底
+   （与 .btn-primary 同族；朱砂留给分数本身） */
+.board-bar-btn-go {
+  background: var(--ink);
+  color: var(--paper);
+  border-bottom-color: var(--ink);
+}
+
+.board-bar-btn-go:hover {
+  color: var(--paper);
+  border-bottom-color: var(--ink);
+}
+
+.board-bar-btn-go:disabled {
+  background: var(--ink-4);
+  border-bottom-color: var(--ink-4);
+  color: var(--paper);
+}
+
 
 /* ---------------- 窄屏 ---------------- */
 

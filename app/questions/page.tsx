@@ -8,6 +8,8 @@ import {
   QUESTION_KINDS,
   questionKindName,
   questionProgress,
+  questionStage,
+  questionStageName,
 } from "@/lib/catalog";
 import { apiGet, apiSend, formatDate } from "@/lib/client";
 import { assignTilts, tiltStyle } from "@/lib/board";
@@ -15,6 +17,7 @@ import { IconPlus, IconSave } from "@/components/icons";
 import { ConfirmDialog, Modal } from "@/components/Modal";
 import { DomainTags } from "@/components/DomainTags";
 import type { Question, QuestionKind } from "@/lib/types";
+import type { QuestionStage } from "@/lib/catalog";
 
 /**
  * 题库 —— 题目墙。
@@ -27,16 +30,12 @@ import type { Question, QuestionKind } from "@/lib/types";
  * 多一次点击换来的选项，悬停在纸上已经给了。
  */
 
-/** 筛选口径。注意「待作答」是没写我的回答，跟 status 不是一个概念。 */
-type Filter = "all" | QuestionKind | "open" | "archived";
+/** 筛选口径。三态由内容推出来，见 catalog 的 questionStage。 */
+type Filter = "all" | QuestionKind | QuestionStage;
 
 /** 全站统一的状态口径，列表和详情页读同一句话。 */
 function statusName(q: Question): string {
-  if (q.status === "archived") return "已归档";
-  if (q.myAnswer.trim() !== "") return "已完成";
-  if (q.aiGenerating) return "AI 在答";
-  if (q.aiAnswer.trim() !== "") return "差我的回答";
-  return "待作答";
+  return questionStageName(questionStage(q));
 }
 
 /** 空着的内容不写、不占位 —— 纸上的空行会读成「加载失败」。 */
@@ -88,16 +87,15 @@ export default function QuestionsPage() {
       all: questions.length,
       interview: by((q) => q.kind === "interview"),
       thinking: by((q) => q.kind === "thinking"),
-      open: by((q) => q.status !== "archived" && q.myAnswer.trim() === ""),
-      archived: by((q) => q.status === "archived"),
+      todo: by((q) => questionStage(q) === "todo"),
+      doing: by((q) => questionStage(q) === "doing"),
+      done: by((q) => questionStage(q) === "done"),
     };
   }, [questions]);
 
-  /** 筛完之后还空着几道 —— 页脚那句总览要按当前筛选说，才是真话。 */
+  /** 还没写完的有几道 —— 页脚那句总览要按当前筛选说，才是真话。 */
   const shownOpen = useMemo(
-    () =>
-      questions.filter((q) => q.status !== "archived" && q.myAnswer.trim() === "")
-        .length,
+    () => questions.filter((q) => questionStage(q) !== "done").length,
     [questions],
   );
 
@@ -108,10 +106,8 @@ export default function QuestionsPage() {
     return questions.filter((item) => {
       if (filter === "interview" || filter === "thinking" || filter === "other") {
         if (item.kind !== filter) return false;
-      } else if (filter === "open") {
-        if (item.status === "archived" || item.myAnswer.trim() !== "") return false;
-      } else if (filter === "archived") {
-        if (item.status !== "archived") return false;
+      } else if (filter === "todo" || filter === "doing" || filter === "done") {
+        if (questionStage(item) !== filter) return false;
       }
       if (q === "") return true;
       return [item.prompt, item.source, item.myAnswer, item.tags.join(" ")]
@@ -352,18 +348,16 @@ export default function QuestionsPage() {
           >
             思考题 {counts.thinking}
           </button>
-          <button
-            className={filter === "open" ? "on" : ""}
-            onClick={() => setFilter("open")}
-          >
-            待作答 {counts.open}
-          </button>
-          <button
-            className={filter === "archived" ? "on" : ""}
-            onClick={() => setFilter("archived")}
-          >
-            已归档 {counts.archived}
-          </button>
+          {/* 三态筛选顺序 = 流程顺序：还没答 → 答了一半 → 都齐了 */}
+          {(["todo", "doing", "done"] as QuestionStage[]).map((stage) => (
+            <button
+              key={stage}
+              className={filter === stage ? "on" : ""}
+              onClick={() => setFilter(stage)}
+            >
+              {questionStageName(stage)} {counts[stage]}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -402,11 +396,13 @@ export default function QuestionsPage() {
               const progress = questionProgress(item);
               const done = progress.filter((p) => p.done).length;
               const head = joined([questionKindName(item.kind), item.source], "　");
+              const stage = questionStage(item);
 
               return (
                 <article
                   key={item.id}
-                  className="note"
+                  /* stage-* 决定图钉颜色：已完成深红 / 作答中橙黄 / 待作答保持原色 */
+                  className={`note stage-${stage}`}
                   style={tiltStyle(TILTS[item.id] ?? 0)}
                   onClick={() => openQuestion(item)}
                   onKeyDown={(e) => {
@@ -501,7 +497,10 @@ export default function QuestionsPage() {
             面试真题 {counts.interview}
             {"　"}
             思考题 {counts.thinking}
-            {counts.archived > 0 ? <>{"　"}已归档 {counts.archived}</> : null}
+            {"　"}
+            已完成 {counts.done}
+            {"　"}
+            作答中 {counts.doing}
           </span>
         </div>
       ) : null}

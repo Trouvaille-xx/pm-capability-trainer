@@ -5,6 +5,7 @@
 
 import type {
   CaptureKind,
+  PromptModule,
   PromptScope,
   QuestionKind,
   QuestionStatus,
@@ -289,20 +290,58 @@ export const CAPTURE_KINDS: { id: CaptureKind; name: string; blurb: string }[] =
   { id: "note", name: "笔记思考", blurb: "碎片想法、观察、复盘" },
 ];
 
-export const PROMPT_SCOPES: { id: PromptScope; name: string; group: string }[] = [
-  { id: "product-teardown", name: "产品拆解", group: "场景块" },
-  { id: "requirement-research", name: "需求调研", group: "场景块" },
-  { id: "process-design", name: "流程设计", group: "场景块" },
-  { id: "assistant", name: "AI 助教引导", group: "模式块" },
-  { id: "grill", name: "AI Grill", group: "模式块" },
-  { id: "socratic", name: "苏格拉底追问", group: "模式块" },
-  { id: "solo", name: "完全独立训练", group: "模式块" },
-  { id: "report", name: "训练报告生成", group: "其它" },
-  { id: "chat", name: "通用对话", group: "其它" },
+/**
+ * 提示词作用域的全表。
+ *
+ * 两级分组：`module` 是「这块提示词服务于哪个功能」，`group` 是模块内部的细分。
+ * 用两级是因为用户找提示词时的第一反应是「我要改 AI 回答的提示词」，
+ * 而不是「我要改一个 scope 叫 report 的东西」——
+ * 所以第一层按功能（训练师 / 题库 / 报告），第二层才是拼装位置。
+ *
+ * `when` 是「什么时候会用到它」的人话说明，列表收起时显示，
+ * 免得用户要靠猜 scope 名来判断这条改完会影响哪里。
+ */
+export const PROMPT_SCOPES: {
+  id: PromptScope;
+  name: string;
+  module: PromptModule;
+  group: string;
+  when: string;
+}[] = [
+  // ---- AI 训练师：按「场景块 + 模式块 + 通用约束」拼装成一条系统提示词 ----
+  { id: "product-teardown", name: "产品拆解", module: "训练师", group: "场景块", when: "做产品拆解训练时" },
+  { id: "requirement-research", name: "需求调研", module: "训练师", group: "场景块", when: "做需求调研训练时" },
+  { id: "process-design", name: "流程设计", module: "训练师", group: "场景块", when: "做流程设计训练时" },
+  { id: "assistant", name: "AI 助教引导", module: "训练师", group: "模式块", when: "选「AI 助教」模式时" },
+  { id: "grill", name: "AI Grill", module: "训练师", group: "模式块", when: "选「AI Grill」模式时" },
+  { id: "socratic", name: "苏格拉底追问", module: "训练师", group: "模式块", when: "选「苏格拉底」模式时" },
+  { id: "solo", name: "完全独立训练", module: "训练师", group: "模式块", when: "选「完全独立」模式时" },
+  { id: "chat", name: "通用约束", module: "训练师", group: "通用约束", when: "每一次训练对话都会带上" },
+
+  // ---- 题库：四个 AI 操作各自独立，一次调用一个 scope ----
+  { id: "question-classify", name: "题目归类", module: "题库", group: "自动操作", when: "新建题目后自动归类时" },
+  { id: "question-answer", name: "AI 回答", module: "题库", group: "自动操作", when: "点「AI 回答」生成参考答案时" },
+  { id: "question-review", name: "AI 评分", module: "题库", group: "自动操作", when: "点「AI 评分」批改我的回答时" },
+  { id: "question-readings", name: "推荐阅读", module: "题库", group: "自动操作", when: "生成推荐阅读时" },
+
+  // ---- 报告 ----
+  { id: "report", name: "训练报告生成", module: "报告", group: "批改出分", when: "训练结束、批改并出分时" },
+];
+
+/** 提示词所属的功能模块（第一层分组）。 */
+export const PROMPT_MODULES: { id: PromptModule; lead: string }[] = [
+  { id: "训练师", lead: "场景块 + 模式块 + 通用约束 拼成一条系统提示词，用在整个训练对话里。" },
+  { id: "题库", lead: "每次操作各调一次模型，各自一条系统提示词，互不影响。" },
+  { id: "报告", lead: "训练结束后批改答卷、给出分项得分与建议。" },
 ];
 
 export function scenarioName(id: TrainingScenario): string {
   return SCENARIOS.find((s) => s.id === id)?.name ?? id;
+}
+
+/** 提示词作用域的人话名字（「题库 · AI 回答」），出错提示与界面共用。 */
+export function promptScopeName(id: PromptScope): string {
+  return PROMPT_SCOPES.find((s) => s.id === id)?.name ?? id;
 }
 
 export function modeName(id: TrainingMode): string {
@@ -362,4 +401,39 @@ export function questionProgress(q: {
     { key: "related", name: "相关知识", done: q.related.length > 0, mine: false },
     { key: "readings", name: "推荐阅读", done: q.readings.length > 0, mine: false },
   ];
+}
+
+/**
+ * 题目的完成状态。三态，由内容推出来，不落盘。
+ *
+ * - 待作答：还没写「我的回答」
+ * - 作答中：写了，但四块内容没齐
+ * - 已完成：四块（我的回答 / AI 回答 / 相关知识 / 推荐阅读）都有内容
+ *
+ * 为什么不存 status 字段：它是内容的派生量，存下来就有两个真相
+ * （内容变了 status 没变）。标题里的「题目」不算在四块里 ——
+ * 没有题就没有这条记录，它天然恒有。
+ */
+export type QuestionStage = "todo" | "doing" | "done";
+
+export function questionStage(q: {
+  myAnswer: string;
+  aiAnswer: string;
+  related: unknown[];
+  readings: unknown[];
+}): QuestionStage {
+  const blocks = questionProgress({
+    prompt: "x",
+    myAnswer: q.myAnswer,
+    aiAnswer: q.aiAnswer,
+    related: q.related,
+    readings: q.readings,
+  }).filter((p) => p.key !== "prompt");
+
+  if (!blocks.find((b) => b.key === "mine")!.done) return "todo";
+  return blocks.every((b) => b.done) ? "done" : "doing";
+}
+
+export function questionStageName(stage: QuestionStage): string {
+  return { todo: "待作答", doing: "作答中", done: "已完成" }[stage];
 }

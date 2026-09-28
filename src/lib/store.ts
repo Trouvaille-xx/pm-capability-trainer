@@ -20,7 +20,8 @@ import type {
   Question,
   TrainingSession,
 } from "./types";
-import { seedMethodology, seedPrompts } from "./seed";
+import { LEGACY_SEED_HASHES } from "./seed-history";
+import { seedHashOf, seedMethodology, seedPrompts } from "./seed";
 
 /** 数据目录；可用 PM_TRAINER_DATA_DIR 覆盖（测试或放到网盘时有用）。 */
 export const DATA_DIR =
@@ -117,15 +118,120 @@ export async function readCollection<K extends CollectionName>(
     const existing = await readJsonFileOrNull<CollectionType<K>[]>(
       collectionPath(name),
     );
-    if (existing !== null) return existing;
-
-    const seeded = seedFor(name);
-    if (seeded.length > 0) {
-      await writeJsonFile(collectionPath(name), seeded);
-      return seeded as CollectionType<K>[];
+    if (existing === null) {
+      const seeded = seedFor(name);
+      if (seeded.length > 0) {
+        await writeJsonFile(collectionPath(name), seeded);
+        return seeded as CollectionType<K>[];
+      }
+      return [];
     }
-    return [];
+
+    /* 已有文件：补齐「种子里有、文件里没有、而且从没出现过」的内置模板。
+       为什么要这一步：新增内置提示词（比如题库那三条）时，老用户的
+       data/prompts.json 里没有它们，界面上就永远看不见、也改不了。
+       为什么不是简单补缺：用户可能**故意删掉**某个内置模板，直接补回来
+       等于删不掉。所以删内置模板时会往 prompts-retired.json 记一笔，
+       这里跳过所有被记过的 scope。
+
+       注意 existing 为空数组时**直接放行**：空文件是用户主动清空的结果
+       （见上面「删不掉的集合」那条约定），不是「缺了几条」，
+       这时候补任何东西都是把删掉的东西塞回来。 */
+    if (name === "prompts" && (existing as unknown[]).length > 0) {
+      const backfilled = await backfillPrompts(
+        existing as unknown as PromptTemplate[],
+      );
+      return backfilled as unknown as CollectionType<K>[];
+    }
+
+    return existing;
   });
+}
+
+/** 记录「被主动删掉的内置 scope」，免得补缺时把它们又塞回来。 */
+function retiredPath(): string {
+  return path.join(DATA_DIR, "prompts-retired.json");
+}
+
+async function readRetiredScopes(): Promise<string[]> {
+  const value = await readJsonFileOrNull<string[]>(retiredPath());
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * 把一个内置提示词的 scope 标记为「用户已删除」。
+ * 由 DELETE /api/prompts/[id] 在删掉内置模板时调用。
+ */
+export async function retirePromptScope(scope: string): Promise<void> {
+  await withLock("prompts", async () => {
+    const current = await readRetiredScopes();
+    if (current.includes(scope)) return;
+    await writeJsonFile(retiredPath(), [...current, scope]);
+  });
+}
+
+/**
+ * 同步内置提示词：补齐缺的、升级「没被改过」的。
+ *
+ * 三件事，按优先级：
+ *   1. 缺的 scope → 补上（新加的内置提示词，老用户看不到）
+ *   2. 已退休的 scope → 跳过（用户主动删过，不能又塞回来）
+ *   3. 内容停在历史版本的内置 → 升级成当前种子文案
+ *
+ * 第 3 条的判断是难点：记录的指纹和当前种子不同，可能是「旧版内置」
+ * 也可能是「用户改过」，光看内容分不出来。所以维护了一份历史指纹清单
+ * （见 seed-history.ts）：
+ *   - 指纹在清单里 → 是历史版本的内置文案 → 升级
+ *   - 指纹不在清单里 → 中间有人改过 → 保留
+ *   - 还没有指纹字段（很老的数据）→ 视为没改过 → 升级
+ *
+ * 判断失败的代价是不对称的：漏升级只是模板停在旧版，误升级才会覆盖
+ * 用户的编辑。所以清单宁可少记、不可多记。
+ */
+async function backfillPrompts(
+  existing: PromptTemplate[],
+): Promise<PromptTemplate[]> {
+  const retired = new Set(await readRetiredScopes());
+  const seeds = seedPrompts();
+  const seedByScope = new Map(seeds.map((s) => [s.scope as string, s]));
+  const present = new Set(existing.map((t) => t.scope as string));
+
+  let changed = false;
+
+  const synced = existing.map((t) => {
+    const seed = seedByScope.get(t.scope);
+    if (!seed || !t.builtin) return t;
+
+    const currentHash = seedHashOf(seed.system);
+    // 已经是当前版本 → 不用动
+    if (t.seedHash === currentHash) return t;
+
+    /* 有指纹、但对不上当前种子：只有指纹被记进历史清单时，
+       才认定这是「没改过的旧版内置」。其余一律当用户改过，保留。 */
+    if (t.seedHash !== undefined) {
+      const legacy = LEGACY_SEED_HASHES[t.scope as string] ?? [];
+      if (!legacy.includes(t.seedHash)) return t;
+    }
+
+    changed = true;
+    return {
+      ...t,
+      name: seed.name,
+      system: seed.system,
+      seedHash: currentHash,
+      // 升级是内容变更，更新时间要跟着走 —— 界面上靠它判断新旧
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
+  const missing = seeds.filter(
+    (s) => !present.has(s.scope as string) && !retired.has(s.scope as string),
+  );
+  if (missing.length > 0) changed = true;
+
+  const next = [...synced, ...missing];
+  if (changed) await writeJsonFile(collectionPath("prompts"), next);
+  return changed ? next : existing;
 }
 
 /** 整体覆盖一个集合。 */

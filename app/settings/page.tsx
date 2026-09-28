@@ -16,7 +16,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { MODES, PROMPT_SCOPES, SCENARIOS, scopeName } from "@/lib/catalog";
+import {
+  MODES,
+  PROMPT_MODULES,
+  PROMPT_SCOPES,
+  SCENARIOS,
+  promptScopeName,
+  scopeName,
+} from "@/lib/catalog";
 import { apiGet, apiSend } from "@/lib/client";
 import { plainSummary } from "@/lib/board";
 import { ConfirmDialog } from "@/components/Modal";
@@ -104,25 +111,15 @@ const PROMPT_VARIABLES: { name: string; desc: string }[] = [
 /**
  * 一条模板什么时候会生效。
  *
- * 之前列表上只写「作用域是产品拆解」这种内部叫法，得自己推它到底管哪一段；
- * 直接写成「产品拆解训练时」这种话，找东西才不用挨个展开猜。
+ * 说明文字统一从 catalog 的 PROMPT_SCOPES 里取（每项自带 when），
+ * 不在这里再写一份 —— 加新 scope 时只改一处。
+ * 找不到时退回一句诚实的「未接进拼装流程」，而不是空白让人猜。
  */
 function scopeWhen(scope: PromptScope): string {
-  if (scope === "report") return "生成训练报告时";
-  if (scope === "chat") return "每次拼装的通用约束";
-  const scenario = SCENARIOS.find((s) => s.id === scope);
-  if (scenario) return `${scenario.name}训练时`;
-  const mode = MODES.find((m) => m.id === scope);
-  if (mode) return `「${mode.name}」模式训练时`;
-  return "未接进拼装流程";
+  return (
+    PROMPT_SCOPES.find((s) => s.id === scope)?.when ?? "未接进拼装流程"
+  );
 }
-
-/** 每个分组是干什么的——光有「场景块」三个字，看不出跟最终提示词什么关系。 */
-const GROUP_LEAD: Record<string, string> = {
-  场景块: "决定这次训练走什么框架、分几步，以及每一步要交什么。",
-  模式块: "决定训练师怎么陪你练：给示范、高强度质询、只追问，还是不参与。",
-  其它: "报告生成的口径，以及每次拼装都会带上的通用约束。",
-};
 
 const PRESETS: { name: string; baseURL: string; model: string; note: string }[] = [
   {
@@ -303,20 +300,33 @@ export default function SettingsPage() {
   const issues = form ? formIssues(form) : [];
   const ready = issues.length === 0;
 
-  const promptGroups = useMemo(() => {
-    const order = ["场景块", "模式块", "其它"];
-    const groups = Array.from(new Set(PROMPT_SCOPES.map((s) => s.group))).sort(
-      (a, b) => order.indexOf(a) - order.indexOf(b),
-    );
-    return groups
-      .map((group) => ({
-        group,
-        items: prompts.filter(
-          (p) =>
-            PROMPT_SCOPES.find((s) => s.id === p.scope)?.group === group,
-        ),
-      }))
-      .filter((g) => g.items.length > 0);
+  /**
+   * 两级分组：先按功能模块，再按模块内的细分。
+   *
+   * 模板条数从 9 涨到 12 之后，一层的平铺列表开始难找东西 ——
+   * 而且「题库」这三条跟训练那几条本来就不是一回事，
+   * 混在一张单子里会让人以为它们也参与训练拼装。
+   */
+  const promptModules = useMemo(() => {
+    return PROMPT_MODULES.map((mod) => {
+      const scopesInModule = PROMPT_SCOPES.filter((s) => s.module === mod.id);
+      const groups = Array.from(new Set(scopesInModule.map((s) => s.group)));
+      return {
+        module: mod.id,
+        lead: mod.lead,
+        groups: groups
+          .map((group) => ({
+            group,
+            items: prompts.filter(
+              (p) => scopesInModule.find((s) => s.id === p.scope)?.group === group,
+            ),
+          }))
+          .filter((g) => g.items.length > 0),
+        count: scopesInModule.filter((s) =>
+          prompts.some((p) => p.scope === s.id),
+        ).length,
+      };
+    }).filter((m) => m.count > 0);
   }, [prompts]);
 
   const openPrompt = prompts.find((p) => p.id === openId) ?? null;
@@ -567,7 +577,7 @@ export default function SettingsPage() {
     try {
       const created = await apiSend<PromptTemplate>("/api/prompts", "POST", {
         scope,
-        name: `${scopeName(scope)}的自定义块`,
+        name: `${promptScopeName(scope)}的自定义块`,
         system: "在这里写系统提示词。",
         enabled: true,
       });
@@ -682,9 +692,6 @@ export default function SettingsPage() {
                 </option>
               ))}
             </select>
-            <div className="set-hint">
-              选一项会把接口地址和模型名一起换掉，密钥不变；之后再手改这两项，就等于自定义。
-            </div>
           </div>
 
           <div className="set-field">
@@ -699,9 +706,6 @@ export default function SettingsPage() {
               onChange={(event) => patchForm({ baseURL: event.target.value })}
               placeholder="https://api.openai.com/v1"
             />
-            <div className="set-hint">
-              兼容 OpenAI 格式的接口地址。末尾不要带 /chat/completions，平台会自己接上去。
-            </div>
           </div>
 
           <div className="set-field">
@@ -716,7 +720,6 @@ export default function SettingsPage() {
               onChange={(event) => patchForm({ model: event.target.value })}
               placeholder="deepseek-v4.1-flash"
             />
-            <div className="set-hint">填接口实际支持的模型标识。</div>
           </div>
 
           <div className="set-field">
@@ -814,9 +817,6 @@ export default function SettingsPage() {
               onChange={(event) => patchForm({ companyName: event.target.value })}
               placeholder="留空时为「本公司」"
             />
-            <div className="set-hint">
-              会替换掉提示词里的 {"{company_name}"}，例如「你是 XX 的 AI 产品经理训练师」。
-            </div>
           </div>
 
           <div className="set-actions">
@@ -851,17 +851,22 @@ export default function SettingsPage() {
             </span>
           </div>
 
-          {/* 先说清楚这些块怎么拼成最终提示词，下面的分组才有位置感 */}
+          {/* 先讲清楚「AI 在这套产品里被用在哪几处」，
+              用户才能把某一条提示词和某一次真实调用对上号 */}
           <div className="set-hint" style={{ marginTop: 0 }}>
-            训练时的系统提示词按这个顺序拼成：
+            产品里用到 AI 的地方一共有三块，每块的提示词都能在这里改：
             <br />
             <span style={{ color: "var(--ink-3)" }}>
-              ① 场景块 → ② 当前步骤指引 → ③ 你关联的输入素材 → ④ 选中的方法论 →
-              ⑤ 模式块 → ⑥ 通用约束
+              <b>训练师</b>——场景块 + 模式块 + 通用约束按顺序拼成一条系统提示词，
+              用在整个训练对话里；其中「当前步骤指引 / 你的输入素材 / 选中的方法论」
+              是训练开始时按你的选择自动带上的，不在这里配。
+              <br />
+              <b>题库</b>——归类、AI 回答、推荐阅读各调一次模型，各自一条，互不影响。
+              <br />
+              <b>报告</b>——训练结束批改出一份评估报告。
             </span>
             <br />
-            下面只列 ①②⑤⑥ 这四类（可以改）。②③④
-            是训练开始时按你的选择与进度自动带上的，不在这里配。
+            每一条都能单独改、单独停用。停用后它在对应的调用里不再生效。
           </div>
 
           {promptMessage && !openPrompt ? (
@@ -870,28 +875,25 @@ export default function SettingsPage() {
             </div>
           ) : null}
 
-          {promptGroups.map(({ group, items }) => (
-            <div key={group}>
-              <div style={{ margin: "26px 0 2px" }}>
-                <span
-                  className="set-hint"
-                  style={{ margin: 0, color: "var(--ink-2)" }}
-                >
-                  {group}（{items.length}）
-                </span>
-                <div className="set-hint" style={{ margin: "2px 0 0" }}>
-                  {GROUP_LEAD[group] ?? ""}
-                </div>
+          {promptModules.map(({ module, lead, groups }) => (
+            <div key={module} className="set-module">
+              <div className="set-module-head">
+                <span className="set-module-name">{module}</span>
+                <span className="set-module-lead">{lead}</span>
               </div>
 
-              {items.map((template) => {
-                const open = openId === template.id;
-                return (
-                  /* 就地展开：列表和编辑区是同一个组件，选完不用往下滚。
-                     收起时是一行「标题 —— 元信息」，展开后原地下沉成表单。 */
-                  <div key={template.id} className="set-tpl-wrap">
-                    <button
-                      type="button"
+              {groups.map(({ group, items }) => (
+                <div key={group} className="set-pgroup">
+                  <div className="set-pgroup-name">{group}</div>
+
+                  {items.map((template) => {
+                    const open = openId === template.id;
+                    return (
+                      /* 就地展开：列表和编辑区是同一个组件，选完不用往下滚。
+                         收起时是一行「标题 —— 元信息」，展开后原地下沉成表单。 */
+                      <div key={template.id} className="set-tpl-wrap">
+                        <button
+                          type="button"
                       className="set-tpl"
                       aria-expanded={open}
                       onClick={() => (open ? closeEditor() : openEditor(template))}
@@ -939,6 +941,18 @@ export default function SettingsPage() {
 
                     {open ? (
                       <div className="set-tpl-body">
+                        {/* 编辑区开头就说清「你在改哪一条」——
+                            长文本滚下去之后，头顶那行列表标题是看不见的 */}
+                        <div className="set-tpl-editor-head">
+                          <span className="set-tpl-editor-label">正在编辑</span>
+                          <span className="set-tpl-editor-name">
+                            {template.name}
+                          </span>
+                          <span className="set-tpl-meta">
+                            {scopeWhen(template.scope)}
+                          </span>
+                        </div>
+
                         <div className="set-field">
                           <label className="set-field-label" htmlFor="tpl-name">
                             模板名称
@@ -968,18 +982,18 @@ export default function SettingsPage() {
                             }
                           />
                           <div className="set-hint">
-                            作用域是{scopeName(template.scope)}。
+                            {promptScopeName(template.scope)}。
                             可用变量：
-                            {PROMPT_VARIABLES.map((v) => ` {${v.name}}`).join("")}。
+                            {PROMPT_VARIABLES.map((v) => ` {${v.name}}`).join(" ")}。
                             请求前会被替换成真实值，写错名字的变量会原样留在提示词里。
                           </div>
                         </div>
 
                         <div className="set-switch-row">
                           <div>
-                            <div className="set-switch-text">参与提示词拼装</div>
+                            <div className="set-switch-text">启用这一条</div>
                             <div className="set-switch-sub">
-                              停用后这一块不会被拼进系统提示词，内容仍然保留。
+                              停用后它在对应的调用里不再生效，内容仍然保留。
                             </div>
                           </div>
                           <button
@@ -987,14 +1001,15 @@ export default function SettingsPage() {
                             className={`set-switch${template.enabled ? " on" : ""}`}
                             role="switch"
                             aria-checked={template.enabled}
-                            aria-label="参与提示词拼装"
+                            aria-label="启用这一条"
                             onClick={() =>
                               void setPromptEnabled(template, !template.enabled)
                             }
                           />
                         </div>
 
-                        <div className="set-actions">
+                        {/* 操作条吸在编辑区底部：长提示词滚下去之后也点得到保存 */}
+                        <div className="set-tpl-actions">
                           <button
                             type="button"
                             className="go"
@@ -1020,20 +1035,22 @@ export default function SettingsPage() {
                   </div>
                 );
               })}
+                </div>
+              ))}
             </div>
           ))}
 
           <div className="set-actions">
             <select
               className="set-select"
-              style={{ width: "auto", minWidth: 190 }}
+              style={{ width: "auto", minWidth: 230 }}
               value={newScope}
               aria-label="新模板的作用域"
               onChange={(event) => setNewScope(event.target.value as PromptScope)}
             >
               {PROMPT_SCOPES.map((scope) => (
                 <option key={scope.id} value={scope.id}>
-                  {scope.group} ／ {scope.name}
+                  {scope.module} ／ {scope.group} ／ {scope.name}
                 </option>
               ))}
             </select>
@@ -1046,8 +1063,7 @@ export default function SettingsPage() {
           </div>
 
           <div className="set-hint" style={{ marginTop: 14 }}>
-            训练时的系统提示词由「场景块 + 模式块」拼成，报告和对话各有一块。
-            内置模板删掉之后重启不会自动恢复，需要手动清掉 data/prompts.json。
+            内置模板删掉后不会被自动补回来；想恢复就在上面新建一条同名作用域的模板。
           </div>
         </section>
 
@@ -1105,9 +1121,6 @@ export default function SettingsPage() {
                 );
               })}
             </select>
-            <div className="set-hint">
-              {webSearch ? PROVIDER_LABELS[webSearch.provider].hint : ""}
-            </div>
           </div>
 
           {webSearchKeyField ? (
@@ -1148,9 +1161,6 @@ export default function SettingsPage() {
                   </button>
                 ) : null}
               </div>
-              <div className="set-hint">
-                换成不需要密钥的服务商（Bing 或 DuckDuckGo）时，这一项会被收起来。
-              </div>
             </div>
           ) : null}
 
@@ -1182,10 +1192,13 @@ export default function SettingsPage() {
             >
               {publishing ? "保存中…" : "保存"}
             </button>
+            {/* 只在「这个服务商必须有密钥但还没填」时出声。
+                没话可说时就留空，不写「和 AI 配置一起保存」这类
+                解释了等于没解释的备注。 */}
             <span className="set-status">
               {webSearchKeyRequired && !webSearch?.hasKey
                 ? "这个服务商必须填密钥，没填就会搜索失败"
-                : "这一块和 AI 配置一起保存"}
+                : ""}
             </span>
           </div>
         </section>

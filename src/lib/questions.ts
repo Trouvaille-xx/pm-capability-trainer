@@ -1,30 +1,51 @@
 /**
- * 题库的 AI 能力。三个独立操作，各自可单独调用、单独失败：
+ * 题库的 AI 能力。四个独立操作，各自可单独调用、单独失败：
  *
  *   1. classifyQuestion  归类 —— 类型、领域、标签、相关知识
- *   2. answerQuestion    生成 AI 回答（流式）
+ *   2. streamAnswer      生成 AI 回答（流式，含「回答导览」块）
  *   3. suggestReadings   推荐阅读（需要联网搜索）
+ *   4. reviewAnswer      批改「我的回答」，四维度打分
  *
- * 为什么拆成三个而不是一个大调用：
+ * 为什么拆成四个而不是一个大调用：
  * 它们耗时差很多（归类 3 秒、回答几十秒、搜索看网络），
  * 而且失败概率不一样（搜索没配 key 就直接不可用）。
  * 合在一起的话，「搜索没配」会连累「归类」也做不了。
  *
- * 归类输出结构化 JSON，所以用 chatOnce + parseJsonLoose；
+ * 归类 / 评分 / 推荐阅读输出结构化 JSON，所以用 chatOnce + parseJsonLoose；
  * 回答要打字机效果，所以用 chatStream。
  */
 
 import { chatOnce, chatStream, parseJsonLoose } from "./ai";
-import { DOMAINS } from "./catalog";
+import { DOMAINS, promptScopeName } from "./catalog";
+import { promptForScope } from "./prompts";
 import { readCollection, readSettings } from "./store";
 import type {
+  AnswerReview,
   MethodologyCard,
+  PromptScope,
   Question,
   QuestionKind,
   RelatedConcept,
   ReadingItem,
 } from "./types";
 import { renderResults, runSearch } from "./websearch";
+
+/**
+ * 取一个作用域的提示词。这三个 scope 的文案住在「设置 → 提示词管理」里，
+ * 和训练/报告用的是同一套模板存储，用户能改也能停用。
+ *
+ * 被停用时这里抛错，而不是退回内置文案 —— 否则用户以为停掉了，实际还在跑。
+ * 抛错会被各自的接口转成一条可读的失败信息。
+ */
+async function requirePrompt(scope: PromptScope): Promise<string> {
+  const text = await promptForScope(scope);
+  if (!text.trim()) {
+    throw new Error(
+      `「${promptScopeName(scope)}」提示词被停用了，这一步做不了。去「辅助系统 → 提示词管理」里打开它。`,
+    );
+  }
+  return text;
+}
 
 /* ------------------------------------------------------------------ *
  * 归类
@@ -39,22 +60,6 @@ export interface Classification {
 
 const KINDS: QuestionKind[] = ["interview", "thinking", "other"];
 
-const CLASSIFY_SYSTEM = `你是一个给产品经理题库做归类的助手。
-
-用户会给你一道面试题或思考题。你要输出 JSON，不要输出任何其它文字。
-
-字段：
-- kind: 只能是 "interview"（面试真题）、"thinking"（自己想的思考题）、"other"（其它）
-- domains: 从给定领域列表里选 1-3 个最贴切的，必须原样使用列表里的词
-- tags: 2-5 个短标签（每个不超过 6 个字），用于检索
-- related: 3-5 个「相关知识」概念，每个形如 {"term": "概念名", "gloss": "一句话说明它跟这道题的关系"}
-
-related 的要求：
-- term 要是一个**有名字的概念**（比如「留存曲线」「护栏指标」「损失厌恶」），
-  不要写成一句描述。它会用来跟知识库匹配。
-- gloss 要说清「这个概念能帮答题人解决什么」，不要复述定义。
-- 优先给那些能直接用来回答这道题的概念。`;
-
 /** 列出知识库里已有的概念名，让模型优先复用（这样能自动关联上卡片）。 */
 async function knownConcepts(): Promise<MethodologyCard[]> {
   try {
@@ -65,6 +70,7 @@ async function knownConcepts(): Promise<MethodologyCard[]> {
 }
 
 export async function classifyQuestion(question: string): Promise<Classification> {
+  const system = await requirePrompt("question-classify");
   const cards = await knownConcepts();
   const names = cards.map((c) => c.title).filter(Boolean);
 
@@ -83,7 +89,7 @@ export async function classifyQuestion(question: string): Promise<Classification
 
   const raw = await chatOnce(
     [
-      { role: "system", content: CLASSIFY_SYSTEM },
+      { role: "system", content: system },
       { role: "user", content: user },
     ],
     // sessionId 必传：供应商要求 x-opencode-session 头，否则 400 MissingSessionID
@@ -143,18 +149,10 @@ export async function classifyQuestion(question: string): Promise<Classification
  * AI 回答
  * ------------------------------------------------------------------ */
 
-const ANSWER_SYSTEM = `你是一位资深产品经理，正在帮一个正在准备面试的人看同一道题。
-
-要求：
-- 直接给出你的答案，不要先复述题目、不要写「这是个好问题」。
-- 结构清晰，但不要滥用小标题；该用列表的地方用列表。
-- 关键判断要给出依据（数据基准、案例、原理），区分事实与推断。
-- 如果这是一道面试题，顺带点出「答这题时最容易被扣分的地方」。
-- 用中文，语气像一个愿意把话说明白的同事，不要客套。`;
-
 export async function* streamAnswer(
   question: Question,
 ): AsyncGenerator<string, void, unknown> {
+  const system = await requirePrompt("question-answer");
   const parts = [`题目：\n${question.prompt}`];
 
   if (question.source) parts.push(`出处：${question.source}`);
@@ -172,7 +170,7 @@ export async function* streamAnswer(
 
   yield* chatStream(
     [
-      { role: "system", content: ANSWER_SYSTEM },
+      { role: "system", content: system },
       { role: "user", content: parts.join("\n\n") },
     ],
     {
@@ -189,23 +187,10 @@ export async function* streamAnswer(
  * 推荐阅读
  * ------------------------------------------------------------------ */
 
-const READING_SYSTEM = `你在给一个产品经理推荐阅读材料。
-
-用户会给你一道题，以及一组搜索结果。你要从中挑出 3-4 条真正值得读的，
-输出 JSON 数组，不要输出任何其它文字。
-
-每个元素：
-- title: 材料标题（保留原文语言，不要翻译书名）
-- source: 来源（站点名、书名 + 章节、作者）
-- url: 链接，必须来自给定的搜索结果，不要自己编
-- why: 一句话说明「为什么对这道题有用」，要具体到这道题的论点，不要说「内容很全面」
-
-优先选：直接回应题目核心争论的、有具体数据或案例的、经典框架的原出处。
-不要选：聚合页、课程广告、内容农场。`;
-
 export async function suggestReadings(
   question: Question,
 ): Promise<ReadingItem[]> {
+  const system = await requirePrompt("question-readings");
   const settings = await readSettings();
   const webSearch = settings.webSearch;
 
@@ -228,7 +213,7 @@ export async function suggestReadings(
 
   const raw = await chatOnce(
     [
-      { role: "system", content: READING_SYSTEM },
+      { role: "system", content: system },
       {
         role: "user",
         content:
@@ -264,4 +249,102 @@ export async function suggestReadings(
     }))
     .filter((r) => r.title !== "" && allowed.has(r.url))
     .slice(0, 4);
+}
+
+/* ------------------------------------------------------------------ *
+ * AI 评分
+ * ------------------------------------------------------------------ */
+
+/**
+ * 评分的五个固定维度与满分。
+ *
+ * 固定而不是让模型自创，是为了让不同题目之间可比 —— 概览页要看的是
+ * 「这个维度是不是一直弱」，每道题换一套维度就什么也看不出来。
+ *
+ * 顺序与提示词里的一致，用来在模型漏维度/改名时兜底对齐。
+ */
+export const REVIEW_DIMENSIONS: { dimension: string; max: number }[] = [
+  { dimension: "问题理解", max: 20 },
+  { dimension: "结构层次", max: 20 },
+  { dimension: "论据充分", max: 20 },
+  { dimension: "洞察深度", max: 20 },
+  { dimension: "谬误识别", max: 20 },
+];
+
+/**
+ * 批改「我的回答」。
+ *
+ * 为什么用固定的四个维度而不是让模型自创：只有维度一致，
+ * 不同题目的分数才能横向比较 —— 概览页要看的是「这个维度是不是一直弱」，
+ * 每道题换一套维度就什么也看不出来。
+ *
+ * 模型可能漏维度、写错名字、给超范围的分数，所以这里按 REVIEW_DIMENSIONS
+ * 逐个对齐（对齐方式与 report.ts 的 grading 一致）：认识的按名字取，
+ * 不认识的按位置兜底，都取不到就给 0 并在 total 上如实反映。
+ */
+export async function reviewAnswer(question: Question): Promise<AnswerReview> {
+  const system = await requirePrompt("question-review");
+  const answer = question.myAnswer.trim();
+
+  const user = [
+    `题目：\n${question.prompt}`,
+    question.source ? `出处：${question.source}` : "",
+    question.domains.length > 0 ? `领域：${question.domains.join("、")}` : "",
+    answer ? `我的回答：\n${answer}` : "我的回答：（空）",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const raw = await chatOnce(
+    [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    // 温度压到 0.2：评分要的是稳定，不是发挥
+    { temperature: 0.2, sessionId: `qst-review-${question.id}` },
+  );
+
+  const parsed = parseJsonLoose<Partial<AnswerReview>>(raw);
+  const rawScores = Array.isArray(parsed.scores) ? parsed.scores : [];
+
+  /* 按维度名对齐；名字对不上就按位置兜底 —— 模型把维度改名时
+     位置通常还是对的，这一步能救回大部分情况。 */
+  const scores = REVIEW_DIMENSIONS.map((dim, index) => {
+    const byName = rawScores.find(
+      (s) => s && typeof s.dimension === "string" && s.dimension.trim() === dim.dimension,
+    );
+    const picked = byName ?? rawScores[index];
+    const score =
+      picked && Number.isFinite(Number(picked.score))
+        ? Math.max(0, Math.min(dim.max, Math.round(Number(picked.score))))
+        : 0;
+    return {
+      dimension: dim.dimension,
+      max: dim.max,
+      score,
+      comment:
+        picked && typeof picked.comment === "string" ? picked.comment.trim() : "",
+    };
+  });
+
+  const summary =
+    typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+  if (!summary && scores.every((s) => s.score === 0)) {
+    throw new Error("评分没给出有效结果，请再试一次。");
+  }
+
+  const suggestions = Array.isArray(parsed.suggestions)
+    ? parsed.suggestions
+        .filter((s): s is string => typeof s === "string" && s.trim() !== "")
+        .map((s) => s.trim())
+        .slice(0, 4)
+    : [];
+
+  return {
+    scores,
+    overall: scores.reduce((sum, s) => sum + s.score, 0),
+    summary,
+    suggestions,
+    at: new Date().toISOString(),
+  };
 }

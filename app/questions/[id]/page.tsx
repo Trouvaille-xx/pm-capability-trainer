@@ -5,14 +5,16 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Markdown } from "@/components/Markdown";
+import { MarkedAnswer } from "@/components/MarkedAnswer";
 import { ConfirmDialog, Modal } from "@/components/Modal";
 import {
   QUESTION_KINDS,
-  QUESTION_STATUSES,
   questionKindName,
-  questionStatusName,
+  questionStage,
+  questionStageName,
 } from "@/lib/catalog";
 import { apiGet, apiSend, formatDate } from "@/lib/client";
+import { parseAnswer } from "@/lib/answer-format";
 import { DomainTags } from "@/components/DomainTags";
 import type { Question } from "@/lib/types";
 
@@ -84,6 +86,40 @@ const SECTIONS: { id: string; name: string }[] = [
   { id: "q-readings", name: "推荐阅读" },
 ];
 
+/**
+ * AI 回答里的一块。
+ *
+ * 四块各有各的用途，视觉上要能分清主次：
+ * - 发言结构（tone=guide）：结构骨架，浅底 + 左边线，是「怎么讲」
+ * - 面试回答原文（tone=main）：主角，白纸黑字，用朱砂标出得分点
+ * - 扣分点（tone=warn）/ 回答建议（tone=plain）：辅助块，规规矩矩排着
+ */
+function AnswerBlock({
+  label,
+  text,
+  tone,
+  marked = false,
+}: {
+  label: string;
+  text: string;
+  tone: "guide" | "main" | "warn" | "plain";
+  /** 是否把 <<>> 渲染成朱砂（只有「面试回答原文」需要） */
+  marked?: boolean;
+}) {
+  return (
+    <section className={`q-ans q-ans-${tone}`}>
+      <div className="q-ans-label">{label}</div>
+      {marked ? (
+        <MarkedAnswer>{text}</MarkedAnswer>
+      ) : (
+        <div className="q-guide-body">
+          <Markdown>{text}</Markdown>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function QuestionDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -106,6 +142,10 @@ export default function QuestionDetailPage() {
   /* 重新归类 / 生成推荐阅读 */
   const [classifying, setClassifying] = useState(false);
   const [reading, setReading] = useState(false);
+
+  /* AI 评分：评的是「我的回答」，评完把维度明细默认折起来 */
+  const [reviewing, setReviewing] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   /* 编辑题目 / 删除 */
   const [editing, setEditing] = useState(false);
@@ -300,8 +340,24 @@ export default function QuestionDetailPage() {
     }
   }
 
-  async function suggestReadings() {
-    setReading(true);
+  /** 让 AI 批改「我的回答」。评完打开明细（用户刚点了按钮，就是要看它）。 */
+  async function reviewMine() {
+    setReviewing(true);
+    setError("");
+    try {
+      const updated = await apiSend<Question>(`/api/questions/${id}/review`, "POST");
+      if (alive.current) {
+        setQuestion(updated);
+        setReviewOpen(true);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "评分失败");
+    } finally {
+      if (alive.current) setReviewing(false);
+    }
+  }
+
+  async function suggestReadings() {    setReading(true);
     setError("");
     try {
       const updated = await apiSend<Question>(`/api/questions/${id}/readings`, "POST");
@@ -311,18 +367,6 @@ export default function QuestionDetailPage() {
       setError(e instanceof Error ? e.message : "生成推荐阅读失败");
     } finally {
       if (alive.current) setReading(false);
-    }
-  }
-
-  async function archive() {
-    setError("");
-    try {
-      const updated = await apiSend<Question>(`/api/questions/${id}`, "PATCH", {
-        status: question?.status === "archived" ? "open" : "archived",
-      });
-      if (alive.current) setQuestion(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "归档失败");
     }
   }
 
@@ -390,7 +434,13 @@ export default function QuestionDetailPage() {
   const mine = question.myAnswer.trim();
   const ai = question.aiAnswer.trim();
   const shown = streaming !== "" ? streaming : ai;
-  const { body: shownBody, cut: shownCut } = splitInterrupt(shown);
+  const { body: shownBodyRaw, cut: shownCut } = splitInterrupt(shown);
+  /* AI 回答分四块：发言结构 / 面试回答原文 / 扣分点 / 建议。
+     流式期间也走同一条解析，所以生成到一半时前面的块会先出来。 */
+  const shownAnswer = parseAnswer(shownBodyRaw);
+  const review = question.review;
+  /* 三态由内容推出来（我的回答 + 另外三块），与列表页同一个函数 */
+  const myStage = questionStage(question);
 
   /** 目录只列真实存在的块 */
   const visibleSections = SECTIONS.filter((section) => {
@@ -437,8 +487,11 @@ export default function QuestionDetailPage() {
         {/* ---------------- 题头 ---------------- */}
         <div className="q-head" id="q-topic">
           <div className="q-head-top">
-            <span>{questionKindName(question.kind)}</span>
-            <span className="state-mark">{questionStatusName(question.status)}</span>
+            <span>
+              {questionKindName(question.kind)}
+              {"　"}
+              <span className="state-mark">{questionStageName(myStage)}</span>
+            </span>
             {question.source ? <span>出自 {question.source}</span> : null}
             <DomainTags domains={question.domains} />
             <span>记于 {when(question.createdAt)}</span>
@@ -466,9 +519,6 @@ export default function QuestionDetailPage() {
             disabled={reading}
           >
             {reading ? "正在找…" : "找推荐阅读"}
-          </button>
-          <button type="button" className="board-bar-btn" onClick={archive}>
-            {question.status === "archived" ? "取消归档" : "归档"}
           </button>
 
           <span className="q-spacer" />
@@ -499,6 +549,13 @@ export default function QuestionDetailPage() {
           <div className="lead-main" id="q-mine">
             <div className="blk-label">
               我的回答
+              {/* 分数直接写在标题旁边：手写体红字，一眼看到自己得了多少 */}
+              {review ? (
+                <span className="score-mark" title={`四维度各 25 分，共 ${review.overall} 分`}>
+                  {review.overall}
+                  <span className="score-mark-max">/100</span>
+                </span>
+              ) : null}
               <span className="blk-hint">
                 {question.myAnsweredAt ? `我答的 ${when(question.myAnsweredAt)}` : "还没写"}
               </span>
@@ -535,6 +592,65 @@ export default function QuestionDetailPage() {
             ) : mine ? (
               <div className="q-body">
                 <Markdown>{question.myAnswer}</Markdown>
+
+                {/* 评分明细默认折起来：分数已经露在上面了，
+                    想看「为什么是这个分」再展开，不占着视线。 */}
+                {review ? (
+                  <>
+                    <button
+                      type="button"
+                      className="review-toggle"
+                      aria-expanded={reviewOpen}
+                      onClick={() => setReviewOpen((v) => !v)}
+                    >
+                      <span className="review-toggle-arrow" aria-hidden="true">
+                        {reviewOpen ? "▾" : "▸"}
+                      </span>
+                      AI 评分明细
+                      <span className="blk-hint">{when(review.at)}</span>
+                    </button>
+                    {reviewOpen ? (
+                      <div className="review-box">
+                        {review.summary ? (
+                          <p className="review-summary">{review.summary}</p>
+                        ) : null}
+                        <div className="review-dims">
+                          {review.scores.map((s) => (
+                            <div className="review-dim" key={s.dimension}>
+                              <div className="review-dim-top">
+                                <span className="review-dim-name">{s.dimension}</span>
+                                <span className="review-dim-score">
+                                  {s.score}
+                                  <span className="review-dim-max">/{s.max}</span>
+                                </span>
+                              </div>
+                              <div className="review-bar" aria-hidden="true">
+                                <span
+                                  className="review-bar-fill"
+                                  style={{ width: `${(s.score / s.max) * 100}%` }}
+                                />
+                              </div>
+                              {s.comment ? (
+                                <p className="review-dim-comment">{s.comment}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                        {review.suggestions.length > 0 ? (
+                          <div className="review-sug">
+                            <div className="review-sug-label">怎么改</div>
+                            <ul>
+                              {review.suggestions.map((s, i) => (
+                                <li key={i}>{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+
                 <div className="row" style={{ marginTop: 18 }}>
                   <button
                     type="button"
@@ -545,6 +661,16 @@ export default function QuestionDetailPage() {
                     }}
                   >
                     修改我的回答
+                  </button>
+                  {/* 评分按钮就放在回答旁边 —— 它是「对我这份回答」的动作，
+                      放到页面顶部的操作条会离上下文太远。 */}
+                  <button
+                    type="button"
+                    className="board-bar-btn board-bar-btn-go"
+                    onClick={reviewMine}
+                    disabled={reviewing}
+                  >
+                    {reviewing ? "正在评分…" : review ? "重新评分" : "AI 评分"}
                   </button>
                 </div>
               </div>
@@ -583,9 +709,36 @@ export default function QuestionDetailPage() {
                   <span>{PHASE_TEXT[phase] || "正在写回答"}</span>
                 </div>
                 {streaming !== "" ? (
-                  <div className="q-body q-cursor">
-                    <Markdown>{streaming}</Markdown>
-                  </div>
+                  <>
+                    {/* 生成过程中前几块会先出来 —— 先给结构，再给作答 */}
+                    {shownAnswer.guide ? (
+                      <AnswerBlock label="面试回答结构" text={shownAnswer.guide} tone="guide" />
+                    ) : null}
+                    {shownAnswer.body ? (
+                      <div className="q-cursor">
+                        <AnswerBlock
+                          label="面试回答原文"
+                          text={shownAnswer.body}
+                          tone="main"
+                          marked
+                        />
+                      </div>
+                    ) : null}
+                    {shownAnswer.pitfalls ? (
+                      <AnswerBlock
+                        label="警惕容易被扣分点"
+                        text={shownAnswer.pitfalls}
+                        tone="warn"
+                      />
+                    ) : null}
+                    {shownAnswer.suggestions ? (
+                      <AnswerBlock
+                        label="回答建议"
+                        text={shownAnswer.suggestions}
+                        tone="plain"
+                      />
+                    ) : null}
+                  </>
                 ) : (
                   <div className="q-empty">
                     <p>{PHASE_TEXT[phase] || "正在写回答"}…</p>
@@ -599,10 +752,30 @@ export default function QuestionDetailPage() {
                     <span>这一段没生成完</span>
                   </div>
                 ) : null}
-                {shownBody ? (
-                  <div className="q-body">
-                    <Markdown>{shownBody}</Markdown>
-                  </div>
+                {shownAnswer.guide ? (
+                  <AnswerBlock label="面试回答结构" text={shownAnswer.guide} tone="guide" />
+                ) : null}
+                {shownAnswer.body ? (
+                  <AnswerBlock
+                    label="面试回答原文"
+                    text={shownAnswer.body}
+                    tone="main"
+                    marked
+                  />
+                ) : null}
+                {shownAnswer.pitfalls ? (
+                  <AnswerBlock
+                    label="警惕容易被扣分点"
+                    text={shownAnswer.pitfalls}
+                    tone="warn"
+                  />
+                ) : null}
+                {shownAnswer.suggestions ? (
+                  <AnswerBlock
+                    label="回答建议"
+                    text={shownAnswer.suggestions}
+                    tone="plain"
+                  />
                 ) : null}
                 <div className="row" style={{ marginTop: 16 }}>
                   <button

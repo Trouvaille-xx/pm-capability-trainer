@@ -44,6 +44,19 @@ async function scopeMap(): Promise<Map<PromptScope, string>> {
 }
 
 /**
+ * 取单个作用域的提示词，供「一次调用一个 scope」的功能使用
+ * （题库的归类 / 回答 / 推荐阅读）。
+ *
+ * 返回空串表示这一块被用户停用了 —— 调用方必须自己决定怎么办，
+ * 而不是在这里悄悄退回内置文案：那样「停用」就等于没停。
+ * 这与训练拼装里「停用即不拼进去」是同一条规则。
+ */
+export async function promptForScope(scope: PromptScope): Promise<string> {
+  const map = await scopeMap();
+  return map.get(scope) ?? "";
+}
+
+/**
  * 把模板里的 {name} 占位符替换成实际值。
  *
  * 只替换我们已知的变量名，所以模板里其它花括号（比如报告提示词里的
