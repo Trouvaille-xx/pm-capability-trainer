@@ -120,6 +120,29 @@ function AnswerBlock({
   );
 }
 
+/**
+ * 生成中的加载动画。
+ *
+ * 用三根朱砂短竖线依次起伏 —— 直接取全站记号语言里的那根竖线来做动效，
+ * 而不是放一个转圈的 spinner。这样「加载」和「标记重点」是同一套视觉母题，
+ * 用户不会觉得这里突然换了套东西。
+ *
+ * 竖线的宽度、颜色都用现有的 --mark-thick / --mark，只有高度是动画量。
+ * 尊重系统的「减少动态效果」：那种情况下不闪，静态显示三根线。
+ */
+function AnswerLoading({ label }: { label: string }) {
+  return (
+    <div className="q-loading" role="status" aria-live="polite">
+      <span className="q-loading-marks" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="q-loading-text">{label}</span>
+    </div>
+  );
+}
+
 export default function QuestionDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -138,6 +161,8 @@ export default function QuestionDetailPage() {
   const [streaming, setStreaming] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [generating, setGenerating] = useState(false);
+  /** 点「AI 生成」时先弹一个提醒，确认后才真的跑 —— 两道文案见 genNotice */
+  const [genConfirm, setGenConfirm] = useState(false);
 
   /* 重新归类 / 生成推荐阅读 */
   const [classifying, setClassifying] = useState(false);
@@ -705,9 +730,7 @@ export default function QuestionDetailPage() {
 
             {busy || streaming !== "" ? (
               <>
-                <div className="q-status">
-                  <span>{PHASE_TEXT[phase] || "正在写回答"}</span>
-                </div>
+                <AnswerLoading label={PHASE_TEXT[phase] || "正在写回答"} />
                 {streaming !== "" ? (
                   <>
                     {/* 生成过程中前几块会先出来 —— 先给结构，再给作答 */}
@@ -739,11 +762,7 @@ export default function QuestionDetailPage() {
                       />
                     ) : null}
                   </>
-                ) : (
-                  <div className="q-empty">
-                    <p>{PHASE_TEXT[phase] || "正在写回答"}…</p>
-                  </div>
-                )}
+                ) : null}
               </>
             ) : ai ? (
               <>
@@ -781,7 +800,7 @@ export default function QuestionDetailPage() {
                   <button
                     type="button"
                     className="board-bar-btn"
-                    onClick={generate}
+                    onClick={() => setGenConfirm(true)}
                     disabled={generating}
                   >
                     {shownCut ? "重答一遍" : "重新生成"}
@@ -798,7 +817,7 @@ export default function QuestionDetailPage() {
                 <button
                   type="button"
                   className="q-empty-action"
-                  onClick={generate}
+                  onClick={() => setGenConfirm(true)}
                   disabled={generating}
                 >
                   让 AI 答一遍
@@ -972,6 +991,28 @@ export default function QuestionDetailPage() {
         busy={deleting}
         onConfirm={destroy}
         onCancel={() => setConfirming(false)}
+      />
+
+      {/* 点「AI 生成」先拦一道。
+          两道文案是同一个弹窗的两种情形：没写就劝他先自己写（这个顺序才有练的意义），
+          写了就提醒别全信 AI（它没你的项目上下文）。确认后才真的调模型。 */}
+      <ConfirmDialog
+        open={genConfirm}
+        title={mine ? "参考 AI 的回答" : "建议先自己答一遍"}
+        message={
+          mine
+            ? "AI 回答结果可能存在一定的偏差，请结合自己的项目回答。"
+            : "建议优先自己回答之后再参考 AI 结果。"
+        }
+        confirmText="开始生成"
+        cancelText="再想想"
+        danger={false}
+        busy={generating}
+        onConfirm={() => {
+          setGenConfirm(false);
+          void generate();
+        }}
+        onCancel={() => setGenConfirm(false)}
       />
     </div>
   );

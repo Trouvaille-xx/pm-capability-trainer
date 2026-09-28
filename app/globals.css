@@ -5458,6 +5458,66 @@ button.tag.tag-brand:hover {
   }
 }
 
+/* 生成中的加载动画：三根朱砂短竖线依次起伏。
+   直接复用全站的记号母题（--mark-thick / --mark），
+   所以「加载」和「标重点」看起来是同一套东西，而不是硬塞一个转圈 spinner。
+   只有高度在做动画，宽度与颜色都是常量。 */
+.q-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0 10px;
+}
+
+.q-loading-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+}
+
+.q-loading-marks i {
+  display: block;
+  width: var(--mark-thick);
+  height: var(--mark-xs);
+  background: var(--mark);
+  transform-origin: center;
+  animation: q-mark-rise 1.15s ease-in-out infinite;
+}
+
+.q-loading-marks i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.q-loading-marks i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes q-mark-rise {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.q-loading-text {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+/* 减少动态效果时不动：三根线静态显示，信息（在加载）不丢 */
+@media (prefers-reduced-motion: reduce) {
+  .q-loading-marks i {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 /* 空状态：不画空框，给一句可点的提示。
    写了回答还没生成 AI 回答时，这里就是「让 AI 答」的入口。 */
 .q-empty {
