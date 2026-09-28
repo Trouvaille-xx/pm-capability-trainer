@@ -3,7 +3,7 @@ name: board-ui
 description: 产品经理能力训练平台的前端风格约束。写或改这个项目的任何界面（页面、组件、CSS）时必须先读它——它记录的是**有意禁掉的默认写法**，以及 token、组件类名、动效与无障碍的既有约定。触发场景：新增/修改 app/ 下的页面或 src/components/ 下的组件、改 app/globals.css、加 UI 元素（按钮/表单/标签/弹窗/空态）、做布局或响应式调整、写动效。
 ---
 
-# 线索板设计系统（v4）—— 前端风格约束
+# 线索板设计系统（v5）—— 前端风格约束
 
 调性：**一个人用的练功房，不是后台管理系统**。材料是纸——便签、批注、页边。
 数据模型本身就是一本词典（词条 → 定义 → 详解 → 怎么用 → 例子），
@@ -32,6 +32,16 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 - **不用 `--sh-*` 做层次**。层次靠底色和描边（`--rule` / `--rule-2` / `--paper-2`），
   只有便签的 `--sh-note` 例外（那是「纸微微离开板面」）。
 
+**文案：不写解释性备注。** 界面上只留两类文字——
+
+1. **影响操作的**：取值范围（「可填 64 到 200000」）、安全声明（「只保存在本机」）、
+   三态说明（「留空就是不改动，想清掉点清除」）
+2. **用户看不出来的**：可用变量清单、需要手工填的格式要求
+
+**「解释了等于没解释」的一句都不要**：比如「这一块和 AI 配置一起保存」、
+「选一项会把接口地址和模型名一起换掉」、服务商自带的功能宣传语。
+判断标准一句话：**这句删了，会让人做错事吗？** 会 → 留；不会 → 删。
+
 ## 二、Token（一律用变量，不要写死颜色）
 
 ```css
@@ -50,19 +60,47 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 /* 语义色：也收敛到低饱和 */
 --good: #2f6b4a    --warn: #8a6d1f    --bad: #b33a2b
 
+/* 记号（全站「边注竖线」母题的高度阶梯）—— 详见下一节 */
+--mark-thick: 2px   /* 所有记号的线宽，恒定 */
+--mark-xs: 10px     /* 领域标签、.note-tags、表单字段名 */
+--mark-sm: 13px     /* 小节标题、模块名 */
+--mark-lg: 20px     /* 页面大标题（h1::before 实际用 0.82em 跟字号走）*/
+
 /* 动效 */
 --ease: cubic-bezier(0.22, 1, 0.36, 1)      /* 常规过渡 */
 --spring: cubic-bezier(0.34, 1.4, 0.64, 1)  /* 便签/整体位移 */
 --rail-dur: 0.34s
 ```
 
-**朱砂纪律：一屏只有一处强调色。** 出现六次强调色就是没有强调。
-朱砂只给「你在这里 / 主次 / 归属」——当前导航项、当前目录节、
-领域标签的竖线、便签上「我自己动过手」那一格。（`::selection` 也是朱砂。）
-
 字体：标题 `--serif`（书卷气），正文 `--sans`（屏幕可读）。**别给正文用衬线。**
 
-## 三、核心视觉母题：便签
+## 三、记号语言：全站的边注竖线
+
+这是现在**最普遍**的视觉母题。几乎每个「标签 / 小标题 / 字段名」前面都有一根
+短竖线（`::before`，宽度恒为 `--mark-thick`，高度取下面的阶梯）：
+
+| 高度 | 用在哪 |
+|---|---|
+| `--mark-xs` (10px) | 领域标签 `.domain`、`.note-tags`、表单字段名 `.set-field-label`、二级分组名 `.set-pgroup-name`、AI 回答四块的标签 `.q-ans-label` |
+| `--mark-sm` (13px) | 小节标题 `.blk-label` / `.reader-sec-label`、模块名 `.set-module-name`、侧栏当前章节 `.toc a.on` |
+| `--mark-lg` (20px) | 页面大标题（`h1::before` 实际写 `0.82em`，跟着字号走，不必逐页配高度）|
+
+**颜色分两档，别用错**：
+
+- **朱砂** = 这一条带「内容上的主次 / 归属」→ 章节名、小节标题、关键点、当前项
+- **灰 `--rule`** = 只是「这里有一项」→ 非当前的侧栏章节、二级分组名
+- 悬停时灰变朱砂（`.toc a:hover::before`），是唯一的过渡
+
+**朱砂纪律：一屏只有一处「实心强调」。** 竖线记号可以很多 —— 它们是标点，
+不是强调。但**实心填色**（`--brand` 底、标签胶囊、当前项高亮）一屏只该有一处。
+出现六次强调色就是没有强调。（`::selection` 是朱砂。）
+
+**按钮不用朱砂。** 主按钮 = **墨色实底**（`.btn-primary` 是 `var(--ink)` 底 + 纸色字），
+次级 = **纯文字 + 下划线**（`.btn`），危险操作才用 `.btn-danger`。
+`globals.css` 里写死了理由：朱砂留给「正在进行」这类只出现一次的信号，
+而按钮每一页都有。`border-radius` 一律 0，不加投影。
+
+## 四、核心视觉母题：便签
 
 `app/` 下多个列表页（题库、记录、方法论、训练）共用一套便签：
 
@@ -82,7 +120,7 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
   便签渲染的是纯文本，`**粗体**` 会原样露出来。
 - 便签是「一次编排好的整体动作」：hover 时角度归正、阴影加深，用 `--spring`。
 
-## 四、组件类名（不要在页面里重造）
+## 五、组件类名（不要在页面里重造）
 
 | 用途 | 类名 |
 |---|---|
@@ -97,26 +135,32 @@ description: 产品经理能力训练平台的前端风格约束。写或改这�
 | 提示条 | `.notice` + `.notice-error/.notice-good/.notice-info` |
 | 弹窗 | `src/components/Modal.tsx` 的 `Modal` / `ConfirmDialog` |
 | 评分刻度 | `.score-bar` / `.score-fill` / `.score-row` |
-| 设置页 | `.setwrap`（`186px + 1fr` 两列）`.set-field` `.set-hint` `.set-status` `.set-tpl*` |
+| 设置页 | `.setwrap`（`186px + 1fr` 两列）`.set-field` `.set-hint` `.set-status` |
+| 提示词编辑 | 两级分组 `.set-module` + `.set-pgroup`；编辑区 `.set-tpl-editor-head`（深色标题栏）`.set-tpl-body` `.set-tpl-actions`（吸底操作条） |
 | 题库详情 | `.q-shell`（目录轨 + 正文两列）`.qtoc` `.lead-main` `.lead-side` `.q-body` |
+| AI 回答四块 | `.q-ans` + `.q-ans-guide/-main/-warn/-plain`（结构 / 原文 / 扣分点 / 建议）；正文里的 `<<关键点>>` 渲染成 `.answer-mark` |
+| 加载动画 | `.q-loading` + `.q-loading-marks i`（三根朱砂竖线依次起伏；`prefers-reduced-motion` 下静止） |
+| 便签状态 | 便签上加 `.stage-done` / `.stage-doing` 换图钉颜色；不加 class = 待作答 |
+| 记号竖线 | 见 §三；`.blk-label` `.reader-sec-label` `.q-ans-label` `.set-field-label` 等都自带 `::before` |
+| 来源与相关方法 | `.source-list` `.related-list` `.related-title` `.related-def`（相关方法名用朱砂） |
 | 骨架 | `.shell` / `.sidebar`（fixed）/ `.content` / `.rail-toggle` |
 
 **布局原语**：`.row` `.stack` `.grid .grid-2/3/4`。改间距优先用它们，别写 inline style——
 但本项目**允许必要的 inline style**（尤其 `ReportView` 的排版微调），
 因为设计系统刻意不做「工具类全家桶」。判断标准：**能复用的进 CSS，一次性的可以 inline。**
 
-## 五、无障碍：这些已经是既有标准，别退化
+## 六、无障碍：这些已经是既有标准，别退化
 
 - 图标组件一律 `aria-hidden` + `focusable="false"`（见 `src/components/icons.tsx`）。
 - 只用 `:focus-visible` 做焦点环（`outline: 2px solid var(--mark)`），
   不要用 `:focus`——鼠标点击不该出现焦点环。
-- **每个动效都要有 `prefers-reduced-motion` 覆盖**。项目里已有 5 处这样的块
+- **每个动效都要有 `prefers-reduced-motion` 覆盖**。项目里已有 6 处这样的块
   （全局一处 `*` 兜底 + 各模块各自一处），新增过渡/动画时同步补上。
 - 可点击的便签用 `role="button"` + `tabIndex={0}` + Enter/Space 处理（照抄列表页写法）。
 - 装饰性元素（图钉、刻度、竖线）必须 `aria-hidden="true"`。
 - 有悬停才显示的信息（如目录文字），键盘 `:focus-within` 也要能显示。
 
-## 六、改布局前先量，别猜
+## 七、改布局前先量，别猜
 
 这个项目**有多处「看着像小问题、其实是布局根因」的坑**，靠推理容易改错方向。
 改侧栏、网格、sticky 这类布局时，先用 Playwright 量两种状态的几何位置：
@@ -145,7 +189,7 @@ await p.evaluate(() =>
 - dev 模式有 Next 开发浮层，Playwright 直接 `click()` 会被它挡住；
   用 `page.evaluate(() => el.click())` 绕过。
 
-## 七、断点
+## 八、断点
 
 **主断点是 `900px`**（绝大多数响应式规则都在这里），另外 `1080px`、`1180px`、
 `860px` 各有零星使用。`1360px` / `1060px` 用于版心宽度上限的判断。
@@ -157,13 +201,18 @@ await p.evaluate(() =>
 `.content` 的 padding 是 `38px 40px 90px`，侧栏是 fixed 的 68px（展开 200px），
 所以内容栏宽度 = 视口 − 68（或 200）− 80。
 
-## 八、写完必须验
+## 九、写完必须验
 
 ```bash
 npm run typecheck    # 必须过
-npm test             # 72 个单测，全过
+npm test             # 101 个单测，全过
 npm run build        # 注意：先停 dev server
 ```
 
 视觉改动**必须实测两种状态**（展开/收起、悬停/不悬停、空/有内容），
 不要只截一张图就认为对了——这个项目的位置跳动问题都是"单看一张图没问题"。
+
+**先确认 dev server 指向的是你改的那棵树。** 这个仓库有多个 worktree，
+`localhost:3000` 上跑的可能是别人的工作树——表现是路由 404 或看不到你的改动。
+先 `curl -o /dev/null -w "%{http_code}" localhost:3000/你的路由` 探一下；
+不对就换个端口：`npx next dev -p 3001`。
