@@ -1,25 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import { DOMAINS, scenarioName } from "@/lib/catalog";
+import { DOMAINS, SCENARIOS, scenarioName } from "@/lib/catalog";
 import { apiGet, apiSend } from "@/lib/client";
 import { assignTilts, plainSummary, tiltStyle } from "@/lib/board";
-import { IconPlus } from "@/components/icons";
-import { ConfirmDialog } from "@/components/Modal";
+import { IconPlus, IconSave } from "@/components/icons";
+import { ConfirmDialog, Modal } from "@/components/Modal";
 import { DomainTags } from "@/components/DomainTags";
-import type { MethodologyCard } from "@/lib/types";
+import type { MethodologyCard, TrainingScenario } from "@/lib/types";
+
+interface FormState {
+  domain: string;
+  title: string;
+  oneLiner: string;
+  detail: string;
+  howToUse: string;
+  example: string;
+  scenarios: TrainingScenario[];
+}
+
+const EMPTY_FORM: FormState = {
+  domain: DOMAINS[0],
+  title: "",
+  oneLiner: "",
+  detail: "",
+  howToUse: "",
+  example: "",
+  scenarios: [],
+};
 
 /**
- * 方法论 —— 便签墙。
+ * 页面外壳。
  *
- * 新建与编辑都搬到了独立页面（/methodology/new、/methodology/[id]/edit）：
- * 表单旁边要放一个 AI 对话面板，弹窗里塞不下多轮问答。
+ * useSearchParams() 在静态预渲染时必须包在 Suspense 里，
+ * 否则 `next build` 会直接失败（Missing Suspense with CSR bailout）。
  */
 export default function MethodologyPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="stack">
+          <div className="loading">加载中…</div>
+        </div>
+      }
+    >
+      <MethodologyPageInner />
+    </Suspense>
+  );
+}
+
+function MethodologyPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [cards, setCards] = useState<MethodologyCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +63,12 @@ export default function MethodologyPage() {
   const [query, setQuery] = useState("");
   const [pendingDelete, setPendingDelete] = useState<MethodologyCard | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -73,6 +114,73 @@ export default function MethodologyPage() {
     router.push(`/methodology/${card.id}`);
   }
 
+  function startCreate() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFormError("");
+    setShowForm(true);
+  }
+
+  function startEdit(card: MethodologyCard) {
+    setEditingId(card.id);
+    setForm({
+      domain: card.domain,
+      title: card.title,
+      oneLiner: card.oneLiner,
+      detail: card.detail,
+      howToUse: card.howToUse,
+      example: card.example,
+      scenarios: card.scenarios,
+    });
+    setFormError("");
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setFormError("");
+    // 从详情页带 ?edit=xxx 进来时，关掉弹窗要把参数清掉，
+    // 否则刷新会又弹一次。
+    if (searchParams.get("edit")) router.replace("/methodology");
+  }
+
+  // 支持从详情页「编辑」跳过来：/methodology?edit=<id> 直接打开编辑弹窗
+  const editParam = searchParams.get("edit");
+  useEffect(() => {
+    if (!editParam || cards.length === 0) return;
+    const target = cards.find((c) => c.id === editParam);
+    if (target) startEdit(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editParam, cards]);
+
+  async function save() {
+    if (form.title.trim() === "" || form.oneLiner.trim() === "") {
+      setFormError("「知识点名称」和「一句话定义」都要填");
+      return;
+    }
+    setSaving(true);
+    setFormError("");
+    try {
+      if (editingId) {
+        await apiSend<MethodologyCard>(
+          `/api/methodology/${editingId}`,
+          "PATCH",
+          form,
+        );
+      } else {
+        await apiSend<MethodologyCard>("/api/methodology", "POST", form);
+      }
+      closeForm();
+      await load();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function destroy() {
     if (!pendingDelete) return;
     setDeleting(true);
@@ -97,10 +205,10 @@ export default function MethodologyPage() {
           </p>
         </div>
         <div className="page-actions">
-          <Link href="/methodology/new" className="btn btn-primary">
+          <button className="btn btn-primary" onClick={startCreate}>
             <IconPlus width={15} height={15} />
             新增知识点
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -141,6 +249,127 @@ export default function MethodologyPage() {
           ))}
         </div>
       </div>
+
+      <Modal
+        open={showForm}
+        title={editingId ? "编辑知识点" : "新增知识点"}
+        subtitle={
+          editingId
+            ? "改完保存即可生效，已有的训练会话不受影响。"
+            : "一句话定义尽量用你自己的话，别抄书上的原句。"
+        }
+        onClose={closeForm}
+        width={680}
+        footer={
+          <>
+            <div className="spacer" />
+            <button className="btn" onClick={closeForm} disabled={saving}>
+              取消
+            </button>
+            <button className="btn btn-primary" onClick={save} disabled={saving}>
+              <IconSave width={14} height={14} />
+              {saving ? "保存中…" : "保存"}
+            </button>
+          </>
+        }
+      >
+        {formError ? (
+          <div className="notice notice-error" style={{ marginBottom: 12 }}>
+            {formError}
+          </div>
+        ) : null}
+
+        <div className="grid grid-2">
+          <div className="field">
+            <label>领域</label>
+            <input
+              className="form-input"
+              list="domain-options"
+              value={form.domain}
+              onChange={(e) => setForm({ ...form, domain: e.target.value })}
+            />
+            <datalist id="domain-options">
+              {domainsPresent.map((domain) => (
+                <option key={domain} value={domain} />
+              ))}
+            </datalist>
+          </div>
+          <div className="field">
+            <label>适用训练场景</label>
+            <div className="form-choice">
+              {SCENARIOS.map((scenario) => {
+                const on = form.scenarios.includes(scenario.id);
+                return (
+                  <button
+                    key={scenario.id}
+                    type="button"
+                    className="form-choice-chip"
+                    data-on={on ? "true" : "false"}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        scenarios: on
+                          ? form.scenarios.filter((s) => s !== scenario.id)
+                          : [...form.scenarios, scenario.id],
+                      })
+                    }
+                  >
+                    {scenario.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="field">
+          <label>知识点名称</label>
+          <input
+            className="form-input"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="例如：损失厌恶"
+          />
+        </div>
+
+        <div className="field">
+          <label>一句话定义</label>
+          <input
+            className="form-input"
+            value={form.oneLiner}
+            onChange={(e) => setForm({ ...form, oneLiner: e.target.value })}
+            placeholder="能用一句话说清，才算真的理解"
+          />
+        </div>
+
+        <div className="field">
+          <label>展开说明</label>
+          <textarea
+            className="form-textarea"
+            value={form.detail}
+            onChange={(e) => setForm({ ...form, detail: e.target.value })}
+            placeholder="原理、适用边界、常见误区"
+          />
+        </div>
+
+        <div className="field">
+          <label>在产品工作里怎么用</label>
+          <textarea
+            className="form-textarea"
+            value={form.howToUse}
+            onChange={(e) => setForm({ ...form, howToUse: e.target.value })}
+          />
+        </div>
+
+        <div className="field">
+          <label>具体例子</label>
+          <textarea
+            className="form-textarea"
+            value={form.example}
+            onChange={(e) => setForm({ ...form, example: e.target.value })}
+          />
+        </div>
+      </Modal>
 
       {/* 便签直接摊在板面上，不套任何面板。
           之前这里有个 .folder-pane（白底 + 描边 + 圆角），是旧版档案标签
@@ -219,14 +448,17 @@ export default function MethodologyPage() {
                     >
                       打开
                     </Link>
-                    <Link
-                      href={`/methodology/${card.id}/edit`}
-                      className="note-op"
-                      onClick={(e) => e.stopPropagation()}
+                    <span
+                      role="button"
                       tabIndex={-1}
+                      className="note-op"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEdit(card);
+                      }}
                     >
                       编辑
-                    </Link>
+                    </span>
                     <span
                       role="button"
                       tabIndex={-1}

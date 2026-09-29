@@ -124,7 +124,7 @@ export default function MethodologyDetailPage() {
           <h1>{card.title}</h1>
         </div>
         <div className="page-actions">
-          <Link href={`/methodology/${card.id}/edit`} className="board-bar-btn">
+          <Link href={`/methodology?edit=${card.id}`} className="board-bar-btn">
             编辑
           </Link>
           <button
@@ -250,7 +250,7 @@ export default function MethodologyDetailPage() {
               回到便签墙
             </Link>
             <Link
-              href={`/methodology/${card.id}/edit`}
+              href={`/methodology?edit=${card.id}`}
               className="board-bar-btn"
             >
               改写这一条
