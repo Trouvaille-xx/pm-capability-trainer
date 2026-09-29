@@ -6385,12 +6385,33 @@ button.tag.tag-brand:hover {
     gap: 28px;
   }
 
-  /* 设置页的左目录在手机上没意义（内容就在下面），去掉 */
+  /* 章节索引：横排但**不换行**，改成可横向滑的一条。
+     之前是 wrap + 行距 4px —— 换行后两行几乎贴在一起，
+     五个章节挤成两三行参差的碎块，读起来像一句话而不是一排导航。 */
   .toc {
     position: static;
     flex-direction: row;
-    flex-wrap: wrap;
-    gap: 4px 14px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 20px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 10px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .toc::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 「章节」这两个字在横排里是多余的（下面就是章节名） */
+  .toc-label {
+    display: none;
+  }
+
+  .toc a {
+    white-space: nowrap;
   }
 
   .settings-shell {
@@ -6451,6 +6472,16 @@ button.tag.tag-brand:hover {
   .note-tags > span {
     padding-top: 5px;
     padding-bottom: 5px;
+  }
+
+  /* 筛选条：手机上一行放不下会换行，行距给小了会读成一串字。
+     加大行距 + 每个按钮给一点内边距，读成一排独立的小块。 */
+  .filters {
+    gap: 12px 18px;
+  }
+
+  .filters button {
+    padding: 2px 1px;
   }
 }
 
