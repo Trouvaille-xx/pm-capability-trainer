@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DOMAINS, SCENARIOS, scenarioName } from "@/lib/catalog";
 import { apiGet, apiSend } from "@/lib/client";
@@ -11,6 +11,18 @@ import { IconPlus, IconSave } from "@/components/icons";
 import { ConfirmDialog, Modal } from "@/components/Modal";
 import { DomainTags } from "@/components/DomainTags";
 import type { MethodologyCard, TrainingScenario } from "@/lib/types";
+
+/**
+ * 「双页」模式每页放几张。
+ *
+ * 两列 × 四行 = 8。数字怎么来的：卡片本身约 300px 高，四行填满一屏
+ * 以内的滚动量；再少一屏装不满（频繁翻页），再多就得上下滚
+ * —— 那就不是「翻页」而是普通滚动了。
+ */
+const SPREAD_COLS = 2;
+const SPREAD_ROWS = 4;
+const PER_PAGE = SPREAD_COLS * SPREAD_ROWS;
+const VIEW_KEY = "mth-view";
 
 interface FormState {
   domain: string;
@@ -61,6 +73,19 @@ function MethodologyPageInner() {
   const [error, setError] = useState("");
   const [domainFilter, setDomainFilter] = useState("all");
   const [query, setQuery] = useState("");
+
+  /* 视图：便签墙（单页）↔ 书页式两列（双页）。
+     双页不是「多塞几张」，是换一种读法 —— 像翻书，一页两栏。
+     选择记在 localStorage，刷新后保持。 */
+  const [view, setView] = useState<"single" | "spread">("single");
+  const [page, setPage] = useState(0);
+  /* 视图选择要记住。
+     这里有个时序坑：挂载时「读 localStorage」和「写回 localStorage」
+     两个 effect 会在同一轮里跑，而 setView 要到下一轮渲染才生效 ——
+     于是写回那一步会拿**默认值 single** 把刚读出来的值覆盖掉，
+     表现为「切到双页后一刷新就变回单页」。
+     解法：跳过写回的第一次执行。 */
+  const skipFirstWrite = useRef(true);
   const [pendingDelete, setPendingDelete] = useState<MethodologyCard | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -106,6 +131,33 @@ function MethodologyPageInner() {
   /* 便签角度按 id 定：每个条目都不撞，且每次打开都一样（便于位置记忆）。
      注意要按全部卡片算，不能按 filtered 算 —— 否则一筛选角度就全变了。 */
   const TILTS = useMemo(() => assignTilts(cards), [cards]);
+
+  /* 当前页要显示的卡片。单页模式就是全部（交给 .wall 自适应铺）。 */
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const safePage = Math.min(page, pageCount - 1);
+  const shownCards =
+    view === "spread"
+      ? filtered.slice(safePage * PER_PAGE, safePage * PER_PAGE + PER_PAGE)
+      : filtered;
+
+  /* 结果集一变（改筛选、改关键词、切视图）就回到第一页 ——
+     否则会停在一个已经不存在的页码上，看到空页。 */
+  useEffect(() => {
+    setPage(0);
+  }, [domainFilter, query, view]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(VIEW_KEY);
+    if (saved === "spread" || saved === "single") setView(saved);
+  }, []);
+
+  useEffect(() => {
+    if (skipFirstWrite.current) {
+      skipFirstWrite.current = false;
+      return;
+    }
+    window.localStorage.setItem(VIEW_KEY, view);
+  }, [view]);
 
   /* 点便签 = 直接进详情页。
      不再「点一下先在下面长出一条菜单」—— 多一次点击换来的选项，
@@ -205,6 +257,22 @@ function MethodologyPageInner() {
           </p>
         </div>
         <div className="page-actions">
+          {/* 切换按钮显示的是「点它会去哪」，不是当前状态 ——
+              按钮上写当前状态时，人往往不知道该不该点。 */}
+          <button
+            type="button"
+            className="board-bar-btn"
+            aria-pressed={view === "spread"}
+            aria-label={view === "single" ? "切换到双页视图" : "切换到单页视图"}
+            title={
+              view === "single"
+                ? "切成两列、像翻书一样一页页看"
+                : "切回便签墙"
+            }
+            onClick={() => setView(view === "single" ? "spread" : "single")}
+          >
+            {view === "single" ? "双页" : "单页"}
+          </button>
           <button className="btn btn-primary" onClick={startCreate}>
             <IconPlus width={15} height={15} />
             新增知识点
@@ -387,8 +455,8 @@ function MethodologyPageInner() {
             </p>
           </div>
         ) : (
-          <div className="wall">
-            {filtered.map((card) => (
+          <div className={`wall${view === "spread" ? " spread" : ""}`}>
+            {shownCards.map((card) => (
               <article
                 key={card.id}
                 className="note"
@@ -476,6 +544,28 @@ function MethodologyPageInner() {
             ))}
           </div>
         )}
+
+        {view === "spread" && pageCount > 1 ? (
+          <div className="pager">
+            <button
+              type="button"
+              onClick={() => setPage(safePage - 1)}
+              disabled={safePage === 0}
+            >
+              上一页
+            </button>
+            <span className="pager-num">
+              第 {safePage + 1} / {pageCount} 页
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage(safePage + 1)}
+              disabled={safePage >= pageCount - 1}
+            >
+              下一页
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <ConfirmDialog

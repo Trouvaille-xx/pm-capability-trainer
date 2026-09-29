@@ -6522,3 +6522,31 @@ button.tag.tag-brand:hover {
     white-space: normal;
   }
 }
+
+/* ================================================================
+   便签墙的两种读法
+   ----------------------------------------------------------------
+   单页（默认 .wall）：自适应多列，横向铺满 —— 这是「墙」的读法。
+   双页（.wall.spread）：固定两列，内容先填满左栏再填右栏，
+   配合翻页条一页页看 —— 这是「书」的读法。
+
+   关键在 grid-auto-flow：
+   - row（默认）：一行从左到右填满，再换下一行 —— 墙。
+   - column：一列从上到下填满，再换下一列 —— 书页。
+   ================================================================ */
+.wall.spread {
+  grid-auto-flow: column;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(4, auto);
+  /* 书页要显得像一页：给个上限，别让卡片区无限高 */
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* 窄屏放不下两栏，降成一栏（仍然是分页的，只是每页竖着排） */
+@media (max-width: 900px) {
+  .wall.spread {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(8, auto);
+  }
+}
