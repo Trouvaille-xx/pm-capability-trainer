@@ -6538,10 +6538,11 @@ button.tag.tag-brand:hover {
 
 .reader.spread .reader-card {
   column-count: 2;
-  /* 中缝：多列布局自带的 column-rule 直接画两栏之间那条线，
-     不用再拿伪元素去定位。间距给足，中缝才有「书脊」的呼吸感。 */
+  /* 中缝做成「车线」：两条细线夹一线缝，书本装订那道线就是这个形状。
+     不用伪元素也不用背景图 —— column-rule 的样式和 border 同源，
+     直接支持 double，一条属性就把双线画出来，还跟着栏高自动延伸。 */
   column-gap: 76px;
-  column-rule: 1px solid var(--rule);
+  column-rule: 3px double var(--ink-4);
   padding: 46px 52px 40px;
 }
 
