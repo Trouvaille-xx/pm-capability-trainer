@@ -313,12 +313,17 @@ export default function QuestionDetailPage() {
 
       /* 服务端在流结束后整段落盘，所以拿最新的记录就行，
          不要自己把流拼起来 PATCH 回去（两边会不一致）。 */
-      await load();
+      const fresh = await load();
 
       /* 【顺序】先 load 再报错。load() 成功时会 setError("")，
          反过来的话这条中断提示刚设上就被自己抹掉了 ——
          训练页踩过这个坑，错误被静默吞掉。 */
-      if (alive.current) reportInterrupt(answer);
+      const cut = alive.current ? reportInterrupt(answer) : true;
+
+      /* 答完之后顺手把「相关知识 + 推荐阅读」补齐 —— 用户要的是一整块参考，
+         不是先给回答、再让他自己点两次。中断的那次不补：
+         回答本身都没写完，先让他把回答拿到手。 */
+      if (alive.current && fresh && !cut) void fillCompanions(fresh);
     } catch (e) {
       if (!alive.current) return;
       setStreaming("");
@@ -350,16 +355,22 @@ export default function QuestionDetailPage() {
     }
   }
 
-  async function classify() {
+  /**
+   * 归类。
+   *
+   * `quiet` 给「生成回答后顺带补上」用：那种场景下失败不该在页面上喊 ——
+   * 手动按钮还在，用户想重试随时可以，没必要为一次后台补全弹一条红字。
+   */
+  async function classify(quiet = false) {
     setClassifying(true);
-    setError("");
+    if (!quiet) setError("");
     try {
       /* 归类失败时服务端仍返回 200 + 记录（lastError 写明原因），
          所以这里拿到记录就等于拿到原因，不用另外判断。 */
       const updated = await apiSend<Question>(`/api/questions/${id}/classify`, "POST");
       if (alive.current) setQuestion(updated);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "重新归类失败");
+      if (!quiet) setError(e instanceof Error ? e.message : "重新归类失败");
     } finally {
       if (alive.current) setClassifying(false);
     }
@@ -382,17 +393,35 @@ export default function QuestionDetailPage() {
     }
   }
 
-  async function suggestReadings() {    setReading(true);
-    setError("");
+  async function suggestReadings(quiet = false) {
+    setReading(true);
+    if (!quiet) setError("");
     try {
       const updated = await apiSend<Question>(`/api/questions/${id}/readings`, "POST");
       if (alive.current) setQuestion(updated);
     } catch (e) {
-      /* readings 失败返回 400 + { error }，apiSend 会抛，这里如实说。 */
-      setError(e instanceof Error ? e.message : "生成推荐阅读失败");
+      /* readings 失败返回 400 + { error }，apiSend 会抛。
+         quiet 时（生成回答后顺带补）不报，否则「没配搜索」会在每次答完都弹一次。 */
+      if (!quiet) setError(e instanceof Error ? e.message : "生成推荐阅读失败");
     } finally {
       if (alive.current) setReading(false);
     }
+  }
+
+  /**
+   * 答完之后，把它旁边那两块也补齐：相关知识、推荐阅读。
+   *
+   * 这两块本来各要手点一次按钮，但「答完就想看到它们」才是真实需求，
+   * 所以顺手带上。两块各自独立（推荐阅读还要联网），并发发、失败互不牵连；
+   * 都走 quiet —— 补不齐不该影响已经拿到的回答。
+   */
+  async function fillCompanions(fresh: Question) {
+    const jobs: Promise<void>[] = [];
+    if (fresh.related.length === 0) jobs.push(classify(true));
+    if (fresh.readings.length === 0) jobs.push(suggestReadings(true));
+    if (jobs.length === 0) return;
+    await Promise.allSettled(jobs);
+    await load();
   }
 
   function openEdit() {
@@ -532,7 +561,7 @@ export default function QuestionDetailPage() {
           <button
             type="button"
             className="board-bar-btn"
-            onClick={classify}
+            onClick={() => void classify()}
             disabled={classifying}
           >
             {classifying ? "正在归类…" : "重新归类"}
@@ -540,7 +569,7 @@ export default function QuestionDetailPage() {
           <button
             type="button"
             className="board-bar-btn"
-            onClick={suggestReadings}
+            onClick={() => void suggestReadings()}
             disabled={reading}
           >
             {reading ? "正在找…" : "找推荐阅读"}
@@ -859,7 +888,7 @@ export default function QuestionDetailPage() {
                 <button
                   type="button"
                   className="q-empty-action"
-                  onClick={classify}
+                  onClick={() => void classify()}
                   disabled={classifying}
                 >
                   {classifying ? "正在归类…" : "让 AI 归类"}
@@ -905,7 +934,7 @@ export default function QuestionDetailPage() {
                 <button
                   type="button"
                   className="q-empty-action"
-                  onClick={suggestReadings}
+                  onClick={() => void suggestReadings()}
                   disabled={reading}
                 >
                   {reading ? "正在找…" : "找几条推荐阅读"}
