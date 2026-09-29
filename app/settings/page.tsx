@@ -900,37 +900,19 @@ export default function SettingsPage() {
                       aria-expanded={open}
                       onClick={() => (open ? closeEditor() : openEditor(template))}
                     >
-                      <span
-                        className="set-tpl-main"
-                        style={{
-                          flexDirection: "column",
-                          alignItems: "flex-start",
-                          gap: 3,
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: "flex",
-                            alignItems: "baseline",
-                            gap: 12,
-                          }}
-                        >
+                      {/* 布局走 CSS 类，不写 inline：inline 的 flex 少了
+                          min-width:0 与换行，窄屏上会被标题顶宽、整页横向溢出。 */}
+                      <span className="set-tpl-main">
+                        <span className="set-tpl-head">
                           <span className="set-tpl-title">{template.name}</span>
                           <span className="set-tpl-meta">
                             {scopeWhen(template.scope)}
                           </span>
                         </span>
-                        {/* 收起时给一行内容预览：不展开也能知道它大概写了什么 */}
-                        <span
-                          style={{
-                            fontSize: 12.5,
-                            color: "var(--ink-4)",
-                            maxWidth: 620,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
+                        {/* 收起时给一行内容预览：不展开也能知道它大概写了什么。
+                            样式走 .set-tpl-preview（不写 inline）—— 手机上要能跟着
+                            容器收缩并省略，inline 的 maxWidth/nowrap 会把它顶宽。 */}
+                        <span className="set-tpl-preview">
                           {plainSummary(template.system, 60)}
                         </span>
                       </span>

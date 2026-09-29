@@ -4299,6 +4299,12 @@ button.tag.tag-brand:hover {
   padding: 14px 0;
   border-bottom: 1px solid rgba(20, 18, 15, 0.08);
   transition: padding-left 0.2s var(--ease);
+  /* 它是个 <button>：浏览器给按钮的宽度是 fit-content，
+     内容不缩它就永远撑得比容器宽（窄屏上整页横向溢出的元凶）。
+     width:100% + min-width:0 让它老实待在容器里。 */
+  width: 100%;
+  min-width: 0;
+  text-align: left;
 }
 
 .set-tpl:last-child {
@@ -6282,4 +6288,237 @@ button.tag.tag-brand:hover {
   gap: 12px;
   flex-wrap: wrap;
   margin: 6px 0 18px;
+}
+
+/* ================================================================
+   移动端（≤ 640px）
+   ----------------------------------------------------------------
+   之前的断点在 900px 就把侧栏横过来了，但那是给「笔记本窄窗口」用的：
+   内容区仍然被左内边距顶着、网格仍然按内容撑开。手机是另一回事 ——
+   宽度只有 375–430px，任何两列布局都必须真的变成一列。
+
+   几条硬规则：
+   1. 侧栏不再占左侧空间（去掉 .shell 的左内边距）
+   2. 所有 grid 的两列都收成一列，并显式写 minmax(0, 1fr) ——
+      只写 1fr 时网格项默认 min-width:auto，会被内容撑宽，整页横向溢出
+   3. 触摸目标不小于 40px（手指比鼠标粗）
+   ================================================================ */
+@media (max-width: 640px) {
+  /* --- 骨架：侧栏变成顶部横条，内容占满 ---
+     左内边距在 body 上（不是 .shell）：桌面端用它给 fixed 侧栏让位。
+     手机上侧栏已变成顶部横条，这条内边距必须一起清掉，
+     否则每个页面右侧都白差 68px。 */
+  body,
+  body.rail-open {
+    padding-left: 0;
+  }
+
+  /* 手机上侧栏变成顶部导航条，并吸顶 —— 换页时不用往回滚。
+     品牌区在手机上只留一个朱砂方块（横条空间金贵），高度压到 8px 内边距。 */
+  .sidebar,
+  .sidebar.open {
+    width: 100%;
+    position: sticky;
+    top: 0;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid rgba(20, 18, 15, 0.11);
+    padding: 8px 12px;
+    background: var(--rail-bg);
+    z-index: 60;
+  }
+
+  .brand {
+    display: none;
+  }
+
+  /* 手机上没有「展开/收起」的意义（栏已经是全宽的了），隐藏开关 */
+  .rail-toggle {
+    display: none;
+  }
+
+  .nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .nav-group-label,
+  .nav-label,
+  .sidebar-foot {
+    display: none;
+  }
+
+  .nav-link {
+    padding: 10px;
+  }
+
+  .content {
+    padding: 18px 14px 64px;
+  }
+
+  .page-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .page-head h1 {
+    font-size: 23px;
+  }
+
+  .page-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  /* --- 网格：一律一列。minmax(0,1fr) 是关键，只写 1fr 会被内容撑开 --- */
+  .setwrap,
+  .grid,
+  .grid-2,
+  .grid-3,
+  .grid-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .setwrap {
+    gap: 28px;
+  }
+
+  /* 设置页的左目录在手机上没意义（内容就在下面），去掉 */
+  .toc {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+  }
+
+  .settings-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* --- 题库详情：目录轨已经在 900px 隐藏，正文补上边距 --- */
+  .q-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .q-shell > .q-head,
+  .q-shell > .q-actions,
+  .q-shell > .lead,
+  .q-shell > .lead-foot {
+    grid-column: 1;
+  }
+
+  /* --- 便签墙：两张并排改一张，否则字小到读不了 --- */
+  .wall {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* --- 弹窗：手机上是近全屏的抽屉 --- */
+  .modal-root {
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: calc(100vh - 24px);
+  }
+
+  .modal-head,
+  .modal-body,
+  .modal-foot {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  /* --- 表格：Markdown 里的对比表允许横向滚动，不要撑破页面 --- */
+  .md table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  /* --- 触摸目标：手指比鼠标粗，链接/按钮给小了会点不准 --- */
+  .board-bar-btn,
+  .btn,
+  .note-op,
+  .link-btn {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .form-choice-chip,
+  .note-tags > span {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+}
+
+/* 更窄的（iPhone SE 一类 320–375px）：再收一档字号与内边距 */
+@media (max-width: 380px) {
+  .content {
+    padding: 16px 11px 56px;
+  }
+
+  .page-head h1 {
+    font-size: 21px;
+  }
+}
+
+/* 提示词条目的收起预览行。
+   从 inline style 挪到这里：inline 里的 maxWidth + nowrap 会在窄屏上
+   把 flex 项顶到 620px 宽，整页跟着横向溢出。 */
+.set-tpl-preview {
+  display: block;
+  min-width: 0;
+  max-width: 620px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--ink-4);
+}
+
+/* 提示词条目：标题区竖排，标题行允许折行。
+   min-width:0 是关键 —— flex 项默认不肯缩到内容宽度以下。 */
+.set-tpl-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.set-tpl-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.set-tpl-head .set-tpl-title,
+.set-tpl-head .set-tpl-meta {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .set-tpl {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding-left: 0;
+  }
+
+  .set-tpl-preview {
+    max-width: 100%;
+  }
+
+  .set-tpl-head {
+    gap: 4px 8px;
+  }
+
+  .set-tpl-meta {
+    white-space: normal;
+  }
 }
