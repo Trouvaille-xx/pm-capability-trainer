@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "@/components/Modal";
 import { DomainTags } from "@/components/DomainTags";
@@ -17,6 +17,12 @@ import type { Capture, MethodologyCard } from "@/lib/types";
  * 需要 URL（可分享、可刷新、可新窗口打开）、需要后退键、
  * 内容再长也不受容器高度限制。抽屉只是把长内容塞进一个窄条，是偷懒。
  */
+/**
+ * 单栏 / 双栏。双栏是把**同一张卡**的内容排成左右两栏（像 Word 的分栏），
+ * 一屏能多读一段，不用一路往下滚。选择记在 localStorage。
+ */
+const VIEW_KEY = "mth-detail-view";
+
 export default function MethodologyDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -31,6 +37,22 @@ export default function MethodologyDetailPage() {
   const [error, setError] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  /* 单页 / 双页。挂载时读回上次的选择 —— 跳过写回的第一次执行，
+     否则会拿默认值把刚读出来的值覆盖掉（列表页踩过这个坑）。 */
+  const [spread, setSpread] = useState(false);
+  const skipFirstWrite = useRef(true);
+  useEffect(() => {
+    const saved = window.localStorage.getItem(VIEW_KEY);
+    if (saved === "spread") setSpread(true);
+  }, []);
+  useEffect(() => {
+    if (skipFirstWrite.current) {
+      skipFirstWrite.current = false;
+      return;
+    }
+    window.localStorage.setItem(VIEW_KEY, spread ? "spread" : "single");
+  }, [spread]);
 
   const load = useCallback(async () => {
     try {
@@ -124,6 +146,17 @@ export default function MethodologyDetailPage() {
           <h1>{card.title}</h1>
         </div>
         <div className="page-actions">
+          {/* 按钮写的是「点它会去哪」，不是当前状态 */}
+          <button
+            type="button"
+            className="board-bar-btn"
+            aria-pressed={spread}
+            aria-label={spread ? "切换到单栏" : "切换到双栏"}
+            title={spread ? "切回单栏" : "把这张卡的内容排成左右两栏"}
+            onClick={() => setSpread(!spread)}
+          >
+            {spread ? "单栏" : "双栏"}
+          </button>
           <Link href={`/methodology?edit=${card.id}`} className="board-bar-btn">
             编辑
           </Link>
@@ -139,7 +172,7 @@ export default function MethodologyDetailPage() {
 
       {/* 一条知识点的详情就是「把这张便签拿起来读」。
           所以用 .reader（单张纸），不用 .wall。 */}
-      <div className="reader on">
+      <div className={`reader on${spread ? " spread" : ""}`}>
         <div className="reader-card">
           <span className="note-pin" aria-hidden="true" />
 

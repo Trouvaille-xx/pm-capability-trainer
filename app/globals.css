@@ -6522,3 +6522,50 @@ button.tag.tag-brand:hover {
     white-space: normal;
   }
 }
+
+/* ================================================================
+   知识点详情：单栏 / 双栏
+   ----------------------------------------------------------------
+   双栏是把**同一张卡**的内容排成左右两栏（像 Word 的分栏），
+   一屏多读一段。用 CSS 多列而不是 grid：格子的高度是各自算的，
+   分栏靠的是「填满一栏再流到下一栏」，只有 column-* 能做。
+   ================================================================ */
+.reader.spread {
+  max-width: 1080px;
+}
+
+.reader.spread .reader-card {
+  column-count: 2;
+  column-gap: 52px;
+  padding: 40px 48px 34px;
+}
+
+/* 题头横跨两栏：标题和一句话定义被劈成两半会很难读 */
+.reader.spread .reader-domain,
+.reader.spread .reader-def {
+  column-span: all;
+}
+
+/* 小节别从中间断开 —— 一个「边界」被拆到左右两栏，
+   读者得先看完右栏再回左栏，反而更累 */
+.reader.spread .reader-sec {
+  break-inside: avoid;
+}
+
+/* 列表项同理 */
+.reader.spread .related-list li,
+.reader.spread .source-list li {
+  break-inside: avoid;
+}
+
+/* 窄屏放不下两栏，强制单栏（按钮还在，但排出来还是一条） */
+@media (max-width: 900px) {
+  .reader.spread {
+    max-width: 720px;
+  }
+
+  .reader.spread .reader-card {
+    column-count: 1;
+    padding: 32px 26px 28px;
+  }
+}
