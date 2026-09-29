@@ -328,6 +328,9 @@ export const PROMPT_SCOPES: {
   { id: "methodology-clarify", name: "生成前澄清", module: "方法论", group: "生成与澄清", when: "写知识点时，先让 AI 提问澄清" },
   { id: "methodology-generate", name: "卡片补全", module: "方法论", group: "生成与澄清", when: "点「补全空字段」时" },
 
+  // ---- 记录总结：贴原文，产出一份结构化摘记 ----
+  { id: "capture-digest", name: "记录摘要", module: "记录", group: "读原文", when: "在记录编辑页点「AI 生成」时" },
+
   // ---- 报告 ----
   { id: "report", name: "训练报告生成", module: "报告", group: "批改出分", when: "训练结束、批改并出分时" },
 ];
@@ -337,6 +340,7 @@ export const PROMPT_MODULES: { id: PromptModule; lead: string }[] = [
   { id: "训练师", lead: "场景块 + 模式块 + 通用约束 拼成一条系统提示词，用在整个训练对话里。" },
   { id: "题库", lead: "每次操作各调一次模型，各自一条系统提示词，互不影响。" },
   { id: "方法论", lead: "写知识点时先澄清、再补全空字段；两次调用各一条，互不影响。" },
+  { id: "记录", lead: "贴一段原文，由 AI 读出一份结构化摘记（总结 / 要点 / 标签）。" },
   { id: "报告", lead: "训练结束后批改答卷、给出分项得分与建议。" },
 ];
 

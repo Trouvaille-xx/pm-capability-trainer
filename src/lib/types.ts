@@ -39,6 +39,13 @@ export interface Capture {
   updatedAt: string;
 }
 
+export interface CaptureDigest {
+  summary: string;
+  keyPoints: string[];
+  tags: string[];
+  domains: string[];
+}
+
 /* ------------------------------------------------------------------ *
  * 模块二：方法论 / 知识点学习
  * ------------------------------------------------------------------ */
@@ -338,8 +345,11 @@ export type MethodologyPromptScope =
   | "methodology-clarify"
   | "methodology-generate";
 
+/** 记录总结的 AI 操作：读原文，产出总结 / 要点 / 标签。 */
+export type CapturePromptScope = "capture-digest";
+
 /** 提示词服务于哪个功能模块。列表的第一层分组。 */
-export type PromptModule = "训练师" | "题库" | "方法论" | "报告";
+export type PromptModule = "训练师" | "题库" | "方法论" | "记录" | "报告";
 
 /**
  * 提示词的作用域。
@@ -356,6 +366,7 @@ export type PromptScope =
   | TrainingMode
   | QuestionPromptScope
   | MethodologyPromptScope
+  | CapturePromptScope
   | "report"
   | "chat";
 

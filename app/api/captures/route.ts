@@ -42,10 +42,10 @@ export async function POST(request: Request) {
       updatedAt: now,
     };
 
-    if (capture.summary === "" && capture.thoughts === "" && capture.keyPoints.length === 0) {
-      return fail("至少填写「总结」「要点」或「笔记思考」中的一项，否则记录没有价值");
-    }
-
+    /* 这里**不再要求**「总结 / 要点 / 思考」至少有一项。
+       现在的流程是：弹窗只收「标题 + 类型」（快速钉一张便签），
+       内容在接下来的编辑页里补 —— 刚创建时正文为空是正常状态，
+       不是错误。status 默认 inbox 就是为这个「还没写」的阶段准备的。 */
     await upsert("captures", capture);
     return ok(capture, 201);
   });

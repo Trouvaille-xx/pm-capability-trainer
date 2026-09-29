@@ -6250,3 +6250,36 @@ button.tag.tag-brand:hover {
     max-height: none;
   }
 }
+
+/* ================================================================
+   记录的编辑页：贴原文 → AI 读一遍 → 写思考
+   ----------------------------------------------------------------
+   单列窄版心。原文框是临时的（不落库），所以单独圈一块、
+   和下面「会被保存的字段」在视觉上分开 —— 免得用户以为原文也会存下来。
+   ================================================================ */
+.cap-edit {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+/* 原文区：浅底 + 左边线，明确「这一块用完就丢」 */
+.cap-raw {
+  margin: 6px 0 4px;
+  padding: 18px 18px 4px;
+  background: var(--paper-2);
+  border-left: 2px solid var(--rule);
+}
+
+.cap-raw .mth-ai-entry {
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.cap-edit-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 6px 0 18px;
+}

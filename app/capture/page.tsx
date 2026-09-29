@@ -271,11 +271,10 @@ function CapturePageInner() {
     setShowForm(true);
   }
 
+  /* 编辑不再走弹窗 —— 那个流程要贴长原文、等 AI 读、逐项改，
+     弹窗里做会很挤，而且关掉就丢。统一去独立编辑页。 */
   function startEdit(capture: Capture) {
-    setEditingId(capture.id);
-    setForm(toForm(capture));
-    setFormError("");
-    setShowForm(true);
+    router.push(`/capture/${capture.id}/edit`);
   }
 
   function closeForm() {
@@ -287,56 +286,28 @@ function CapturePageInner() {
     if (searchParams.get(EDIT_PARAM)) router.replace("/capture");
   }
 
+  /**
+   * 新建。弹窗只收「标题 + 类型」，建完直接进编辑页 ——
+   * 总结 / 要点 / 标签 / 思考都在那边做，没必要让人先在弹窗里对着空字段发呆。
+   */
   async function save() {
     const title = form.title.trim();
     if (title === "") {
       setFormError("先给它起个标题。");
       return;
     }
-    const keyPoints = form.keyPoints
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    // POST 会校验这条，PATCH 不会 —— 前端自己兜住：没有正文的记录没有价值。
-    if (
-      form.summary.trim() === "" &&
-      form.thoughts.trim() === "" &&
-      keyPoints.length === 0
-    ) {
-      setFormError("「内容总结」「关键要点」「笔记思考」至少要写一处。");
-      return;
-    }
 
     setSaving(true);
     setFormError("");
     try {
-      const payload = {
+      const created = await apiSend<Capture>("/api/captures", "POST", {
         kind: form.kind,
         title,
-        author: form.author.trim(),
-        source: form.source.trim(),
-        status: form.status,
-        tags: form.tags
-          .split(/[,，]/)
-          .map((t) => t.trim())
-          .filter(Boolean),
-        domains: form.domains,
-        summary: form.summary,
-        keyPoints,
-        thoughts: form.thoughts,
-        rating: form.rating,
-      };
-
-      if (editingId) {
-        await apiSend<Capture>(`/api/captures/${editingId}`, "PATCH", payload);
-      } else {
-        await apiSend<Capture>("/api/captures", "POST", payload);
-      }
+      });
       closeForm();
-      await load();
+      router.push(`/capture/${created.id}/edit`);
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "保存失败");
-    } finally {
       setSaving(false);
     }
   }
@@ -379,10 +350,7 @@ function CapturePageInner() {
   }
 
   const total = items.length;
-  const hasBody =
-    form.summary.trim() !== "" ||
-    form.thoughts.trim() !== "" ||
-    form.keyPoints.trim() !== "";
+  const titleReady = form.title.trim() !== "";
 
   return (
     <div className="stack">
@@ -653,14 +621,14 @@ function CapturePageInner() {
 
       <Modal
         open={showForm}
-        title={editingId ? "改这张便签" : "钉一张便签"}
-        subtitle="「内容总结」用自己的话写；「笔记思考」写它跟你手上的哪个具体问题有关。"
+        title="钉一张便签"
+        subtitle="先起个标题、选个类型。总结与思考在下一步的编辑页里写。"
         onClose={closeForm}
         width={680}
         footer={
           <>
             <span className="modal-hint">
-              {hasBody ? "可以保存" : "还差正文"}
+              {titleReady ? "可以保存" : "还差标题"}
             </span>
             <span className="spacer" />
             <button
@@ -721,144 +689,6 @@ function CapturePageInner() {
             </div>
           </div>
 
-          <div className="field">
-            <label>状态</label>
-            <div className="form-choice">
-              {STATUSES.map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  className="form-choice-chip"
-                  data-on={form.status === status}
-                  onClick={() => setForm({ ...form, status })}
-                >
-                  {STATUS_TEXT[status]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="field">
-            <label>评分</label>
-            <div className="form-choice form-choice-stars">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  className="form-choice-chip"
-                  aria-label={`评 ${n} 星`}
-                  title={`评 ${n} 星`}
-                  onClick={() => setForm({ ...form, rating: n })}
-                >
-                  {form.rating >= n ? <b>★</b> : "☆"}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="form-choice-chip"
-                data-on={form.rating === 0}
-                onClick={() => setForm({ ...form, rating: 0 })}
-              >
-                未评分
-              </button>
-            </div>
-          </div>
-
-          <div className="field">
-            <label htmlFor="cap-summary">内容总结</label>
-            <textarea
-              id="cap-summary"
-              className="form-textarea"
-              value={form.summary}
-              placeholder="用自己的话概括：它到底在说什么，论证是怎么走的"
-              onChange={(e) => setForm({ ...form, summary: e.target.value })}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="cap-points">关键要点</label>
-            <textarea
-              id="cap-points"
-              className="form-textarea"
-              value={form.keyPoints}
-              placeholder={"一行一条\n例：参照点决定你此刻站在收益还是损失的框架里"}
-              onChange={(e) => setForm({ ...form, keyPoints: e.target.value })}
-            />
-            <div className="hint">一行一条，之后可以直接抽成方法论词条。</div>
-          </div>
-
-          <div className="field">
-            <label htmlFor="cap-thoughts">笔记思考</label>
-            <textarea
-              id="cap-thoughts"
-              className="form-textarea"
-              value={form.thoughts}
-              placeholder="我从中想到了什么？它能解释我遇到的哪个具体问题？"
-              onChange={(e) => setForm({ ...form, thoughts: e.target.value })}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="cap-tags">标签</label>
-            <input
-              id="cap-tags"
-              className="form-input"
-              value={form.tags}
-              placeholder="逗号分隔，例如：定价，决策，留存"
-              onChange={(e) => setForm({ ...form, tags: e.target.value })}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="cap-author">作者</label>
-            <input
-              id="cap-author"
-              className="form-input"
-              value={form.author}
-              placeholder="选填"
-              onChange={(e) => setForm({ ...form, author: e.target.value })}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor="cap-source">来源</label>
-            <input
-              id="cap-source"
-              className="form-input"
-              value={form.source}
-              placeholder="链接 / 出版社 / 第几章"
-              onChange={(e) => setForm({ ...form, source: e.target.value })}
-            />
-          </div>
-
-          <div className="field">
-            <label>关联领域</label>
-            <div className="form-choice">
-              {DOMAINS.map((domain) => {
-                const on = form.domains.includes(domain);
-                return (
-                  <button
-                    key={domain}
-                    type="button"
-                    className="form-choice-chip"
-                    data-on={on}
-                    aria-pressed={on}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        domains: on
-                          ? form.domains.filter((d) => d !== domain)
-                          : [...form.domains, domain],
-                      })
-                    }
-                  >
-                    {domain}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="hint">选填。挂上领域，之后才好和方法论库对上。</div>
-          </div>
         </div>
       </Modal>
 

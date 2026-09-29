@@ -1,5 +1,6 @@
 import { nowIso } from "./ids";
 import type {
+  CapturePromptScope,
   MethodologyCard,
   MethodologyPromptScope,
   PromptTemplate,
@@ -607,6 +608,48 @@ const METHODOLOGY_PROMPTS: {
   },
 ];
 
+/* ------------------------------------------------------------------ *
+ * 记录总结的提示词（1 个）
+ *
+ * 用户贴一段原文（书摘、文章、课堂笔记），要的是一份能回看的结构化摘记。
+ * 关键约束是「只依据原文」—— 让它补出原文没有的案例、数据、出处，
+ * 这条记录就不可信了，而记录的价值恰恰在于可信。
+ * ------------------------------------------------------------------ */
+
+const CAPTURE_PROMPTS: {
+  scope: CapturePromptScope;
+  name: string;
+  system: string;
+}[] = [
+  {
+    scope: "capture-digest",
+    name: "记录 · 摘要",
+    system: `你在帮一个人整理他的读书 / 看文章的记录。他会给你一段原文
+（书摘、文章正文、他自己的笔记），你要读出一份能日后回看的结构化摘记。
+
+必须只输出一个 JSON 对象，不要任何解释文字，不要 markdown 代码块：
+
+{
+  "summary": "内容总结：这段原文在讲什么。两三句话，不要复述原句",
+  "keyPoints": ["关键要点，3-6 条，每条一句话"],
+  "tags": ["标签，2-6 个，每个不超过 6 个字"],
+  "domains": ["关联领域，从下面给定的领域列表里选 0-3 个，必须原样使用"]
+}
+
+要求：
+- **只依据原文**。原文没提到的数据、年代、人名、书名、案例，一律不要补。
+  宁可少写一条要点，也不要编一条听起来合理但原文没有的 ——
+  这是他日后会当真的记录，编错了比空着更糟。
+- summary 用自己的话概括，不要摘抄原文句子（他手上已经有原文了）。
+- keyPoints 是「值得单独记住的点」，不是原文的逐段缩写。
+  如果原文本身就在列点，挑最重要的几条，不要照搬全部。
+- tags 用于日后检索：写概念名（如「留存曲线」「认知负荷」），
+  不要写「读书笔记」「重要」这类没有区分度的词。
+- 原文信息太少（只有一两句）时：summary 照写，keyPoints 可以只给 1-2 条，
+  并在 summary 结尾说明「原文较短，摘要基于有限内容」。`,
+  },
+];
+
 export function seedPrompts(): PromptTemplate[] {
   const now = nowIso();
   const all = [
@@ -614,6 +657,7 @@ export function seedPrompts(): PromptTemplate[] {
     ...MODE_PROMPTS,
     ...QUESTION_PROMPTS,
     ...METHODOLOGY_PROMPTS,
+    ...CAPTURE_PROMPTS,
     REPORT_PROMPT,
     CHAT_PROMPT,
   ];
