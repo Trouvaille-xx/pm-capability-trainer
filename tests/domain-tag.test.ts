@@ -6,7 +6,10 @@ describe("domainCode", () => {
   it("按 DOMAINS 的顺序从 01 起编号", () => {
     expect(domainCode("心理学")).toBe("01");
     expect(domainCode("产品设计")).toBe("04");
-    expect(domainCode("增长与运营")).toBe(String(DOMAINS.length).padStart(2, "0"));
+    // 最后一项拿到最大的编号。**不要写死具体领域名** ——
+    // 之前写的是「增长与运营」，后来新增了一个领域，这条断言就误报了。
+    const last = DOMAINS[DOMAINS.length - 1];
+    expect(domainCode(last)).toBe(String(DOMAINS.length).padStart(2, "0"));
   });
 
   it("固定两位，便于对齐", () => {

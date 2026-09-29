@@ -228,6 +228,7 @@ export const DOMAINS = [
   "数据与分析",
   "项目管理",
   "增长与运营",
+  "表达与沟通",
 ] as const;
 
 /**
