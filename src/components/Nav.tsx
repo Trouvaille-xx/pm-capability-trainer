@@ -76,6 +76,16 @@ export function Nav() {
     }
   }, [open, ready]);
 
+  /* 手机端的抽屉：和 open 不是一回事。
+     open 改的是「栏的宽度」（桌面端内容会让位）；
+     抽屉是浮层，盖在内容上、点遮罩收起。两种形态各自独立。 */
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /* 换页就收起抽屉 —— 否则点完导航它还盖在上面，得再点一次才看得到内容 */
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
   // [ 键切换
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -92,8 +102,44 @@ export function Nav() {
   }, []);
 
   return (
-    <aside className={`sidebar${open ? " open" : ""}`}>
-      <div className="brand">
+    <>
+      {/* 手机端的顶栏：汉堡 + 品牌名。桌面端由 CSS 隐藏。
+          为什么汉堡而不是底部标签栏：导航有 6 项，底部栏放不下，
+          而其中「辅助系统」是设置类的次要入口，塞进底部反而拉低主次。 */}
+      <header className="mobile-bar">
+        <button
+          type="button"
+          className="mobile-menu"
+          aria-label="打开导航"
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen(true)}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
+        <span className="mobile-brand">能力训练平台</span>
+      </header>
+
+      {drawerOpen ? (
+        <div
+          className="nav-scrim"
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden="true"
+        />
+      ) : null}
+
+      <aside
+        className={`sidebar${open ? " open" : ""}${drawerOpen ? " drawer-open" : ""}`}
+      >
+        <div className="brand">
         <span className="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
@@ -209,6 +255,7 @@ export function Nav() {
           </>
         ) : null}
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

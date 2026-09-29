@@ -139,6 +139,15 @@
   --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
+/* ---- 移动端顶栏与抽屉遮罩：桌面端不存在，由 ≤640px 的媒体查询打开 ----
+   【必须放在 :root 外面】之前误插进了 :root 块内，被当作 CSS 嵌套编译成
+   `:root .mobile-bar`（权重 0,2,0），压过媒体查询里的 `.mobile-bar`（0,1,0），
+   于是顶栏在手机上也永远是 display:none。 */
+.mobile-bar,
+.nav-scrim {
+  display: none;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -6313,44 +6322,130 @@ button.tag.tag-brand:hover {
     padding-left: 0;
   }
 
-  /* 手机上侧栏变成顶部导航条，并吸顶 —— 换页时不用往回滚。
-     品牌区在手机上只留一个朱砂方块（横条空间金贵），高度压到 8px 内边距。 */
-  .sidebar,
-  .sidebar.open {
-    width: 100%;
+  /* ---- 顶栏：汉堡 + 品牌。桌面端不存在 ---- */
+  .mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     position: sticky;
     top: 0;
-    height: auto;
-    border-right: 0;
-    border-bottom: 1px solid rgba(20, 18, 15, 0.11);
-    padding: 8px 12px;
+    z-index: 55;
+    height: 52px;
+    padding: 0 10px 0 6px;
     background: var(--rail-bg);
-    z-index: 60;
+    border-bottom: 1px solid rgba(20, 18, 15, 0.11);
   }
 
-  .brand {
-    display: none;
+  .mobile-menu {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--ink-2);
+    cursor: pointer;
   }
 
-  /* 手机上没有「展开/收起」的意义（栏已经是全宽的了），隐藏开关 */
+  .mobile-menu svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mobile-menu:active {
+    color: var(--mark);
+  }
+
+  .mobile-brand {
+    font-family: var(--serif);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* ---- 侧栏变成抽屉：浮层，默认移出屏幕 ----
+     和桌面端那套「栏宽」完全分开：那个让内容让位，这个盖在内容上。
+     之前这里是「侧栏变成顶部横条」，但导航图标是绝对定位的、
+     我又把标签 display:none 了 —— 链接没有任何在流内容，宽度算出来是 0，
+     六个图标全叠在左上角。抽屉形态从根上避开了这个问题。 */
+  .sidebar,
+  .sidebar.open {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(78vw, 280px);
+    height: auto;
+    padding: 18px 0 14px;
+    background: var(--rail-bg);
+    border-right: 1px solid rgba(20, 18, 15, 0.11);
+    border-bottom: 0;
+    overflow-y: auto;
+    z-index: 70;
+    transform: translateX(-100%);
+    transition: transform 0.22s var(--ease);
+  }
+
+  .sidebar.drawer-open {
+    transform: translateX(0);
+  }
+
+  /* 抽屉里用「展开态」的排版：品牌在、图标回到文档流、标签可见。
+     这些要盖过桌面端的 .sidebar:not(.open) 规则 —— 靠权重相同 + 出处更靠后取胜。 */
+  .sidebar.drawer-open .brand {
+    display: flex;
+  }
+
+  .sidebar.drawer-open .brand-text {
+    opacity: 1;
+  }
+
+  .sidebar.drawer-open .nav {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 0 12px;
+  }
+
+  /* 折叠态那条 .sidebar:not(.open) .nav-link { justify-content: center } 还在生效：
+     图标是绝对定位的，不占文档流，于是标签成了唯一的流内元素、被居中推走，
+     图标和文字之间空出一大截。这里把它拉回左对齐。 */
+  .sidebar.drawer-open .nav-link {
+    justify-content: flex-start;
+    padding: 0 8px;
+  }
+
+  .sidebar.drawer-open .nav-icon {
+    left: 8px;
+    transform: translateY(-50%);
+  }
+
+  .sidebar.drawer-open .nav-label {
+    display: inline;
+    opacity: 1;
+    margin-left: 38px;
+  }
+
+  .sidebar.drawer-open .nav-group-label {
+    display: block;
+  }
+
+  .sidebar.drawer-open .sidebar-foot {
+    display: flex;
+  }
+
+  /* 抽屉形态不需要「展开 / 收起栏宽」那个开关 */
   .rail-toggle {
     display: none;
   }
 
-  .nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-
-  .nav-group-label,
-  .nav-label,
-  .sidebar-foot {
-    display: none;
-  }
-
-  .nav-link {
-    padding: 10px;
+  .nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: rgba(20, 18, 15, 0.3);
   }
 
   .content {
