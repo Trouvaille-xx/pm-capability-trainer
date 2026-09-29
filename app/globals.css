@@ -6039,3 +6039,214 @@ button.tag.tag-brand:hover {
     font-size: 25px;
   }
 }
+
+/* ================================================================
+   知识点的编辑器：左表单 + 右 AI 面板
+   ----------------------------------------------------------------
+   面板按需滑出，滑出时把左栏挤窄 —— 不是盖在上面。
+   所以两栏都是 flex 子项、左栏必须 min-width: 0：
+   少了它 flex 项不肯缩到内容宽度以下，面板会把整行撑破。
+   ================================================================ */
+.mth-compose {
+  display: flex;
+  gap: 30px;
+  align-items: flex-start;
+  /* 父级 .stack 是纵向 flex。flex 子项在交叉轴上遇到 auto 外边距会**停止拉伸**、
+     缩成内容的宽度 —— 所以这里必须显式给 width: 100%，否则整块只有 330px 宽。
+     width:100% 填满、max-width 封顶、auto 外边距居中，三件一起才成立。 */
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+/* 表单填满剩余宽度、**不设上限**。
+   设了上限会同时坏两件事：面板没开时右边空一大片没人用；
+   面板开了表单也不缩（它本来就没到上限），「挤压」就成了空话。 */
+.mth-form-col {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 面板：定宽、粘住；左边缘一条细线把它和表单分开 */
+.mth-ai-col {
+  flex: 0 0 auto;
+  width: 360px;
+  position: sticky;
+  top: 84px;
+  padding-left: 24px;
+  border-left: 1px solid var(--rule);
+}
+
+.mth-ai-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* 记号竖线，和全站小节标签同一档 */
+.mth-ai-head::before {
+  content: "";
+  flex: 0 0 auto;
+  width: var(--mark-thick);
+  height: var(--mark-sm);
+  background: var(--mark);
+}
+
+.mth-ai-head .link-btn {
+  margin-left: auto;
+}
+
+/* 对话区：限高可滚，免得长对话把整页顶高 */
+.mth-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 380px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.mth-chat-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--ink-4);
+}
+
+.mth-turn {
+  font-size: 13.5px;
+  line-height: 1.8;
+}
+
+/* 用户的话：左侧一条灰竖线；AI 的话：浅底。和详情页的主次一致 */
+.mth-turn-user {
+  padding-left: 12px;
+  border-left: 2px solid var(--ink-4);
+  color: var(--ink-2);
+}
+
+.mth-turn-assistant {
+  padding: 10px 13px;
+  background: var(--paper-2);
+  color: var(--ink-2);
+}
+
+.mth-turn-who {
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
+.mth-turn-text {
+  white-space: pre-wrap;
+}
+
+.mth-ask {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.mth-ask .row {
+  margin-top: 10px;
+}
+
+/* 表单底部的 AI 入口 */
+.mth-ai-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+}
+
+/* 「AI 补入」小标记：不做实心强调，只提醒这一格是它填的 */
+.mth-ai-tag {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--mark);
+}
+
+.mth-ai-tag::before {
+  content: "·";
+  margin-right: 4px;
+  color: var(--rule);
+}
+
+/* AI 想改动你已写的内容：朱砂竖线 + 浅底，沿用全站的提议语言 */
+.mth-proposal {
+  margin-top: 10px;
+  padding: 11px 14px;
+  background: var(--paper-2);
+  border-left: 2px solid var(--mark);
+}
+
+.mth-proposal-head {
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--mark);
+}
+
+.mth-proposal-value {
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+
+.mth-proposal-why {
+  margin-top: 7px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+/* 行内文字按钮（全部采用 / 全部忽略 / 收起） */
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+  border-bottom: 1px solid var(--rule);
+  transition: color 0.13s var(--ease), border-color 0.13s var(--ease);
+}
+
+.link-btn:hover {
+  color: var(--mark);
+  border-bottom-color: var(--mark);
+}
+
+/* 窄屏：面板落到表单下面，不再挤 */
+@media (max-width: 1080px) {
+  .mth-compose {
+    flex-direction: column;
+  }
+
+  .mth-form-col {
+    max-width: none;
+    width: 100%;
+  }
+
+  .mth-ai-col {
+    width: 100%;
+    position: static;
+    padding-left: 0;
+    padding-top: 20px;
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .mth-chat {
+    max-height: none;
+  }
+}

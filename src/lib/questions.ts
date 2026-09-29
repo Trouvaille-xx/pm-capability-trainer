@@ -16,36 +16,18 @@
  */
 
 import { chatOnce, chatStream, parseJsonLoose } from "./ai";
-import { DOMAINS, promptScopeName } from "./catalog";
-import { promptForScope } from "./prompts";
+import { DOMAINS } from "./catalog";
+import { requirePrompt } from "./prompts";
 import { readCollection, readSettings } from "./store";
 import type {
   AnswerReview,
   MethodologyCard,
-  PromptScope,
   Question,
   QuestionKind,
   RelatedConcept,
   ReadingItem,
 } from "./types";
 import { renderResults, runSearch } from "./websearch";
-
-/**
- * 取一个作用域的提示词。这三个 scope 的文案住在「设置 → 提示词管理」里，
- * 和训练/报告用的是同一套模板存储，用户能改也能停用。
- *
- * 被停用时这里抛错，而不是退回内置文案 —— 否则用户以为停掉了，实际还在跑。
- * 抛错会被各自的接口转成一条可读的失败信息。
- */
-async function requirePrompt(scope: PromptScope): Promise<string> {
-  const text = await promptForScope(scope);
-  if (!text.trim()) {
-    throw new Error(
-      `「${promptScopeName(scope)}」提示词被停用了，这一步做不了。去「辅助系统 → 提示词管理」里打开它。`,
-    );
-  }
-  return text;
-}
 
 /* ------------------------------------------------------------------ *
  * 归类

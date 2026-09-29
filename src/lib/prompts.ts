@@ -18,6 +18,7 @@ import {
   DEFAULT_COMPANY_NAME,
   MODES,
   SCENARIOS,
+  promptScopeName,
   scenarioRubric,
   scenarioSteps,
 } from "./catalog";
@@ -54,6 +55,23 @@ async function scopeMap(): Promise<Map<PromptScope, string>> {
 export async function promptForScope(scope: PromptScope): Promise<string> {
   const map = await scopeMap();
   return map.get(scope) ?? "";
+}
+
+/**
+ * 取一条提示词，取不到就抛。
+ *
+ * 供「一次调用一个 scope」的功能使用（题库的四个操作、方法论的澄清与补全）。
+ * 被用户停用时**抛错**，而不是退回内置文案 —— 否则用户以为停掉了，实际还在跑。
+ * 抛出的信息要能直接展示：说清是哪一条、去哪儿打开它。
+ */
+export async function requirePrompt(scope: PromptScope): Promise<string> {
+  const text = await promptForScope(scope);
+  if (!text.trim()) {
+    throw new Error(
+      `「${promptScopeName(scope)}」提示词被停用了，这一步做不了。去「辅助系统 → 提示词管理」里打开它。`,
+    );
+  }
+  return text;
 }
 
 /**

@@ -320,15 +320,26 @@ export type PublicAISettings = Omit<
   mcpServers: PublicMCPServer[];
 };
 
-/** 题库模块的三个 AI 操作，各有自己的系统提示词。 */
+/** 题库模块的 AI 操作，各有自己的系统提示词。 */
 export type QuestionPromptScope =
   | "question-classify"
   | "question-answer"
   | "question-readings"
   | "question-review";
 
+/**
+ * 方法论模块的 AI 操作。
+ *
+ * 拆成两条是因为它们要做的事正好相反：一条只提问、不生成（澄清），
+ * 一条只补空字段、不提问（补全）。合成一条会让「这一轮该不该输出内容」
+ * 变成要靠上下文猜的事，模型很容易在第一轮就把答案写出来。
+ */
+export type MethodologyPromptScope =
+  | "methodology-clarify"
+  | "methodology-generate";
+
 /** 提示词服务于哪个功能模块。列表的第一层分组。 */
-export type PromptModule = "训练师" | "题库" | "报告";
+export type PromptModule = "训练师" | "题库" | "方法论" | "报告";
 
 /**
  * 提示词的作用域。
@@ -336,7 +347,7 @@ export type PromptModule = "训练师" | "题库" | "报告";
  * 训练时的系统提示词由「场景块 + 模式块 + 通用约束」拼装而成，三者都能单独调整，
  * 所以用户可以把「AI Grill 的质询强度」和「产品拆解的框架」分开改。
  *
- * 题库与报告是各自独立的一次调用，不参与拼装，一个 scope 对应一处调用。
+ * 题库 / 方法论 / 报告是各自独立的一次调用，不参与拼装，一个 scope 对应一处调用。
  * 它们出现在这里，是为了让「AI 在哪里被用到」和「提示词在哪里能改」是同一张表 ——
  * 而不是一半能在界面上改、一半埋在代码里。
  */
@@ -344,6 +355,7 @@ export type PromptScope =
   | TrainingScenario
   | TrainingMode
   | QuestionPromptScope
+  | MethodologyPromptScope
   | "report"
   | "chat";
 
