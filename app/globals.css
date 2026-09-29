@@ -6531,13 +6531,35 @@ button.tag.tag-brand:hover {
    分栏靠的是「填满一栏再流到下一栏」，只有 column-* 能做。
    ================================================================ */
 .reader.spread {
-  max-width: 1080px;
+  /* 书的开本：比单栏宽得多，但留出边距不至于顶到内容栏两端。
+     1440 视口下内容栏可用 1292px，这里取 1240。 */
+  max-width: 1240px;
 }
 
 .reader.spread .reader-card {
   column-count: 2;
-  column-gap: 52px;
-  padding: 40px 48px 34px;
+  /* 中缝：多列布局自带的 column-rule 直接画两栏之间那条线，
+     不用再拿伪元素去定位。间距给足，中缝才有「书脊」的呼吸感。 */
+  column-gap: 76px;
+  column-rule: 1px solid var(--rule);
+  padding: 46px 52px 40px;
+}
+
+/* 书的正文比屏幕正文松：字号大一档、行距更开。
+   书是拿来读的，屏幕上那套紧凑参数在整页长文里会累。 */
+.reader.spread .reader-sec-body,
+.reader.spread .reader-example {
+  font-size: 15.5px;
+  line-height: 2;
+}
+
+.reader.spread .reader-def {
+  font-size: 17px;
+  line-height: 1.86;
+}
+
+.reader.spread .reader-sec {
+  margin-bottom: 30px;
 }
 
 /* 题头横跨两栏：标题和一句话定义被劈成两半会很难读 */
