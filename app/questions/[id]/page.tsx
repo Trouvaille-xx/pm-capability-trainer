@@ -605,7 +605,7 @@ export default function QuestionDetailPage() {
               我的回答
               {/* 分数直接写在标题旁边：手写体红字，一眼看到自己得了多少 */}
               {review ? (
-                <span className="score-mark" title={`四维度各 25 分，共 ${review.overall} 分`}>
+                <span className="score-mark" title={`五维度各 20 分，共 ${review.overall} 分`}>
                   {review.overall}
                   <span className="score-mark-max">/100</span>
                 </span>

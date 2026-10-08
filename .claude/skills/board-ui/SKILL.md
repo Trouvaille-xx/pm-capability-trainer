@@ -202,7 +202,7 @@ await p.evaluate(() =>
 
 ```bash
 npm run typecheck    # 必须过
-npm test             # 101 个单测，全过
+npm test             # 104 个单测，全过
 npm run build        # 注意：先停 dev server
 ```
 

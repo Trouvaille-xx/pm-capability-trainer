@@ -9,12 +9,12 @@
 | 模块 | 作用 |
 | --- | --- |
 | **记录总结** | 图书 / 文章 / 笔记思考的结构化记录：总结、要点、我自己的思考、标签与关联领域 |
-| **方法论** | 跨领域知识点卡片（心理学、经济学、商业与战略、产品设计、用户研究、数据分析、项目管理、增长运营），内置 72 张起步卡片 |
+| **方法论** | 跨领域知识点卡片（心理学、经济学、商业与战略、产品设计、用户研究、数据与分析、项目管理、增长与运营、表达与沟通），内置 85 张起步卡片 |
 | **AI 训练师** | 3 个训练场景 × 4 种训练模式，支持联网检索与 MCP 工具，每次训练结束产出评估报告 |
 | **题库** | 面试真题与思考题：先自己答一遍，再让 AI 答、让 AI 评分（五维度，含谬误识别），并关联相关知识与推荐阅读 |
-| **设置** | AI 配置（任意 OpenAI 兼容端点）、联网与 MCP、提示词管理（按功能模块分组，逐条可改可停用） |
+| **辅助系统** | AI 配置（任意 OpenAI 兼容端点）、联网与 MCP、提示词管理（按功能模块分组，逐条可改可停用） |
 
-## 四个模块是串起来的
+## 几个模块是串起来的
 
 「输入 → 沉淀 → 训练 → 反馈」不是四句口号，而是四条真实的连线：
 
@@ -34,7 +34,7 @@ npm install
 npm run dev
 ```
 
-打开 http://localhost:3000 ，先到 **设置 → AI 配置** 填入 Base URL、模型名和 API Key，
+打开 http://localhost:3000 ，先到 **辅助系统 → AI 配置** 填入 Base URL、模型名和 API Key，
 点「测试连接」确认可用，然后就可以开始训练了。
 
 其它命令：
@@ -52,7 +52,7 @@ npm test           # 单元测试（Vitest）
 ## AI 配置
 
 任何 OpenAI 兼容端点都可以，平台会自动在 Base URL 后追加 `/chat/completions`。
-设置页提供了几个预设：OpenAI、OpenCode Zen Go、DeepSeek 官方、本地 Ollama。
+辅助系统提供了几个预设：OpenAI、OpenCode Zen Go、DeepSeek 官方、本地 Ollama。
 
 API Key 只保存在本机 `data/settings.json`，该目录已加入 `.gitignore`，不会被提交。
 
@@ -112,14 +112,15 @@ API Key 只保存在本机 `data/settings.json`，该目录已加入 `.gitignore
 
 ## 联网搜索与 MCP
 
-设置页的「联网与 MCP」可以给 AI 加上外部检索能力。
+辅助系统的「联网与 MCP」可以给 AI 加上外部检索能力。
 
-**联网搜索**支持 5 个来源：
+**联网搜索**支持 6 个来源：
 
 | 来源 | 密钥 | 说明 |
 | --- | --- | --- |
 | **Bing 国际版** | 不需要 | 默认。抓公开结果页，国内网络可直连 |
 | DuckDuckGo | 不需要 | 国内多数网络不可达 |
+| AnySearch | 可选 | 统一检索网关，匿名即可用（按 IP 限流 + 每日免费额度），填 Key 额度更高 |
 | Tavily | 需要 | 为 AI 检索设计，结果带正文摘要，质量最好 |
 | Serper | 需要 | Google 搜索结果 API |
 | Brave Search | 需要 | 独立索引，国内网络可能不可达 |
@@ -147,8 +148,8 @@ MCP 服务器连不上时也会在对话里说明原因，而不是只写进终�
 ```
 data/
 ├── captures.json      # 记录总结
-├── methodology.json   # 方法论卡片（首次访问自动播种 72 张起步卡片）
-├── prompts.json       # 提示词模板（首次访问自动播种 12 个内置模板）
+├── methodology.json   # 方法论卡片（首次访问自动播种 85 张起步卡片）
+├── prompts.json       # 提示词模板（首次访问自动播种 16 个内置模板）
 ├── prompts-retired.json # 被删掉的内置模板记录（防止它们被自动补回）
 ├── sessions.json      # 训练会话与报告
 ├── questions.json     # 题库
@@ -168,34 +169,43 @@ app/
 ├── page.tsx                   # 概览（含能力画像与下一步建议）
 ├── error.tsx / global-error.tsx / not-found.tsx / loading.tsx
 ├── globals.css                # 设计系统（全部样式）
-├── capture/                   # 记录总结（列表 + 详情）
+├── capture/                   # 记录总结（列表 + 详情 + edit/ 编辑页）
 ├── methodology/               # 方法论（列表 + 详情）
 ├── trainer/                   # AI 训练师
 │   ├── page.tsx               #   训练历史（可搜索题目 / 摘要 / 标签）
 │   ├── new/                   #   新建训练（三步向导，支持 ?capture= 预填）
 │   └── [id]/                  #   会话页 + report/ 报告页
-├── settings/                  # 设置
-└── api/                       # 全部接口（13 个路由）
-    ├── captures/  methodology/  prompts/  settings/
+├── questions/                 # 题库（列表 + 详情）
+├── settings/                  # 辅助系统
+└── api/                       # 全部接口（20 个路由文件）
+    ├── captures/  methodology/  prompts/  settings/  questions/
     └── sessions/[id]/message | submit | report
 src/
 ├── lib/
-│   ├── types.ts       # 领域模型（含对外安全的设置投影类型）
-│   ├── catalog.ts     # 场景 / 模式 / 领域 / 拆解步骤与评分表
-│   ├── store.ts       # JSON 文件存储（原子写 + 串行化 + 锁内读改写）
-│   ├── settings.ts    # 设置投影：保证密钥不出服务端
-│   ├── seed.ts        # 内置提示词与方法论起步卡片
-│   ├── ai.ts          # OpenAI 兼容客户端（流式 + 工具调用 + 超时/取消）
-│   ├── agent.ts       # 工具调用循环、参数收敛与降级
-│   ├── mcp.ts         # MCP Streamable HTTP 客户端（会话复用）
-│   ├── websearch.ts   # 联网搜索（5 个来源）
-│   ├── prompts.ts     # 提示词拼装（含素材与方法论注入）
-│   ├── report.ts      # 报告生成与规整
-│   ├── profile.ts     # 跨会话能力画像（派生式计算）
-│   ├── review.ts      # 薄弱维度 → 下一次训练推荐
-│   └── export.ts      # 导出 Markdown / PPT 大纲
-└── components/        # Nav、Modal、Markdown、ReportView、icons
-tests/                 # Vitest 单元测试
+│   ├── types.ts         # 领域模型（含对外安全的设置投影类型）
+│   ├── catalog.ts       # 场景 / 模式 / 领域 / 拆解步骤与评分表
+│   ├── store.ts         # JSON 文件存储（原子写 + 串行化 + 锁内读改写）
+│   ├── settings.ts      # 设置投影：保证密钥不出服务端
+│   ├── seed.ts          # 内置提示词与方法论起步卡片
+│   ├── seed-history.ts  # 历史种子指纹（区分「旧版内置」与「用户改过」）
+│   ├── ai.ts            # OpenAI 兼容客户端（流式 + 工具调用 + 超时/取消）
+│   ├── agent.ts         # 工具调用循环、参数收敛与降级
+│   ├── mcp.ts           # MCP Streamable HTTP 客户端（会话复用）
+│   ├── websearch.ts     # 联网搜索（6 个来源）
+│   ├── prompts.ts       # 提示词拼装（含素材与方法论注入）
+│   ├── report.ts        # 报告生成与规整
+│   ├── profile.ts       # 跨会话能力画像（派生式计算）
+│   ├── review.ts        # 薄弱维度 → 下一次训练推荐
+│   ├── export.ts        # 导出 Markdown / PPT 大纲
+│   ├── questions.ts     # 题库的四个 AI 操作（归类 / 回答 / 推荐阅读 / 评分）
+│   ├── capture-ai.ts    # 记录总结的 AI 摘要（只提议，不写库）
+│   ├── answer-format.ts # AI 回答的四块解析与 <<重点>> 标记
+│   ├── board.ts         # 便签角度分配与 markdown 摘要
+│   ├── api.ts           # 路由通用响应、同源校验、入参校验
+│   ├── client.ts        # 前端接口封装与日期工具
+│   └── ids.ts           # id 与时间戳
+└── components/          # Nav、Modal、Markdown、ReportView、MarkedAnswer、DomainTags、icons
+tests/                   # Vitest 单元测试（14 个文件 / 104 个用例）
 ```
 
 ## 已知限制

@@ -43,7 +43,7 @@ function lastTrainerLine(session: TrainingSession): string {
  *
  * 这一页要回答一个问题：「我现在该干什么」。
  * 所以第一屏是「正在进行的那次训练」+ 一行统计，
- * 下面是最近留下的东西 —— 不是四张等大的统计卡（那是后台的形状）。
+ * 下面是最近留下的东西 —— 不是一排等大的统计卡（那是后台的形状）。
  */
 export default function DashboardPage() {
   const [captures, setCaptures] = useState<Capture[]>([]);
@@ -207,7 +207,7 @@ export default function DashboardPage() {
         </Link>
       ) : null}
 
-      {/* 一行统计，不是四张卡 */}
+      {/* 一行统计，不是一排等大的卡 */}
       <div className="statline">
         <div className="statline-item">
           <span className="statline-value">{captures.length}</span>

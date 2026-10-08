@@ -6,7 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "产品经理能力训练平台",
   description:
-    "记录总结 · 方法论学习 · AI 训练师 · 辅助系统，一个闭环的产品能力训练工作台",
+    "记录总结 · 方法论学习 · AI 训练师 · 题库 · 辅助系统，一个闭环的产品能力训练工作台",
 };
 
 export default function RootLayout({

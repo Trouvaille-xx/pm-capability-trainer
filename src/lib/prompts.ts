@@ -186,7 +186,7 @@ async function captureBlock(session: TrainingSession): Promise<string> {
   return lines.join("\n");
 }
 
-/** 本次选中的方法论卡片 → 注入块，让 21 张卡片真的在训练里起作用。 */
+/** 本次选中的方法论卡片 → 注入块，让选中的卡片真的在训练里起作用。 */
 async function methodologyBlock(session: TrainingSession): Promise<string> {
   const ids = session.methodologyCardIds ?? [];
   if (ids.length === 0) return "";
